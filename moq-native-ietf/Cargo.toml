@@ -37,3 +37,9 @@ socket2 = "0.5"
 anyhow = { version = "1", features = ["backtrace"] }
 clap = { version = "4", features = ["derive", "env"] }
 tracing = { workspace = true }
+
+[features]
+default = []
+# Record quic_trace:* transport events alongside the MoQ object events. Needs the
+# patched Quinn and web-transport that expose the instrumentation hooks.
+trace = ["moq-transport/trace", "quinn/moq-trace"]

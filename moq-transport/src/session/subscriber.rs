@@ -19,6 +19,7 @@ use crate::{
     serve::{self, FullTrackName, ServeError},
 };
 
+use crate::trace;
 use crate::watch::Queue;
 
 use super::{
@@ -95,6 +96,9 @@ pub struct Subscriber {
 
     /// Correlation id of the owning session, tagged onto this subscriber's log records.
     session_id: SessionId,
+
+    /// Object instrumentation handle, shared with the session's publisher half.
+    trace: trace::Handle,
 }
 
 /// RAII guard that rolls back a SUBSCRIBE_NAMESPACE prefix reservation on failure.
@@ -232,6 +236,7 @@ impl Subscriber {
         request_id: RequestId,
         pending_requests: PendingRequests,
         session_id: SessionId,
+        trace: trace::Handle,
     ) -> Self {
         Self {
             published_namespaces: Default::default(),
@@ -250,12 +255,18 @@ impl Subscriber {
             pending_requests,
             mlog,
             session_id,
+            trace,
         }
     }
 
     /// Correlation id of the session this subscriber belongs to.
     pub fn session_id(&self) -> &SessionId {
         &self.session_id
+    }
+
+    /// Object instrumentation handle for this session.
+    pub(crate) fn trace(&self) -> &trace::Handle {
+        &self.trace
     }
 
     /// Create an inbound/server QUIC connection, by accepting a bi-directional QUIC stream for control messages.
@@ -1233,6 +1244,7 @@ impl Subscriber {
     /// object decoding, ID tracking, validation, logging, and payload reading.
     async fn recv_subgroup_objects(
         session_id: SessionId,
+        trace: trace::Handle,
         stream_header_type: data::StreamHeaderType,
         mut subgroup_header: data::SubgroupHeader,
         mut reader: Reader,
@@ -1246,11 +1258,35 @@ impl Subscriber {
             subgroup_header.publisher_priority
         );
 
+        // One identity per ingested group, allocated before the first header is
+        // read so the inbound trace covers the header parse.
+        let trace_group = trace::next_group_instance();
+
         let mut object_count = 0;
         let mut previous_object_id: Option<u64> = None;
         let mut subgroup_writer: Option<serve::SubgroupWriter> = None;
 
         while !reader.done().await? {
+            // The object ID delta is normally zero, and it is only recorded for
+            // reporting, so anticipate the identity and start the trace before
+            // the header it describes.
+            let anticipated_object_id = previous_object_id.map_or(0, |prev| prev + 1);
+            let mut context = trace::ObjectContext::new(
+                trace::Direction::Rx,
+                trace::ObjectIdentity::new(
+                    subgroup_header.track_alias,
+                    subgroup_header.group_id,
+                    anticipated_object_id,
+                ),
+                trace::LogicalId::new(trace_group, anticipated_object_id),
+            )
+            .with_stream_offset_start(reader.offset());
+            if let Some(stream_id) = reader.stream_id() {
+                context = context.with_stream_id(stream_id);
+            }
+            let mut object = trace.object(context);
+            let mut header = object.phase(trace::ObjectPhase::HeaderParse);
+
             // Decode the object header.  Extension-header variant carries extra
             // relay-visible fields; plain variant does not.
             let (mut remaining_bytes, object_id_delta, status, decoded_object) =
@@ -1317,6 +1353,9 @@ impl Subscriber {
 
             let extension_headers = decoded_object.as_ref().map(|o| o.extension_headers.clone());
 
+            header.set_payload_bytes(remaining_bytes as u64);
+            header.finish(trace::ObjectOutcome::Success);
+
             // Non-normal status with extension headers is a protocol violation.
             if status.is_some_and(|s| s != data::ObjectStatus::NormalObject)
                 && extension_headers.as_ref().is_some_and(|h| !h.is_empty())
@@ -1371,21 +1410,55 @@ impl Subscriber {
             // Write the object payload.
             // TODO SLG - object_id_delta and object status are still being ignored
             let subgroup_writer = subgroup_writer.as_mut().ok_or(SessionError::Internal)?;
-            let mut object_writer = subgroup_writer.create(remaining_bytes, extension_headers)?;
+            let create = object.phase(trace::ObjectPhase::Create);
+            let mut object_writer = match subgroup_writer.create_traced(
+                remaining_bytes,
+                extension_headers,
+                trace_group,
+            ) {
+                Ok(writer) => {
+                    create.finish(trace::ObjectOutcome::Success);
+                    writer
+                }
+                Err(err) => {
+                    create.finish(trace::ObjectOutcome::Failed);
+                    return Err(err.into());
+                }
+            };
 
             while remaining_bytes > 0 {
-                let chunk = reader.read_chunk(remaining_bytes).await?.ok_or_else(|| {
-                    tracing::error!(
-                        session_id = %session_id,
-                        "[SUBSCRIBER] recv_subgroup_objects: stream ended with {} bytes remaining",
-                        remaining_bytes
-                    );
-                    SessionError::WrongSize
-                })?;
+                let read = object.phase(trace::ObjectPhase::PayloadRead);
+                let chunk = match reader.read_chunk(remaining_bytes).await {
+                    Ok(Some(chunk)) => chunk,
+                    Ok(None) => {
+                        read.finish(trace::ObjectOutcome::Failed);
+                        tracing::error!(
+                            session_id = %session_id,
+                            "[SUBSCRIBER] recv_subgroup_objects: stream ended with {} bytes remaining",
+                            remaining_bytes
+                        );
+                        return Err(SessionError::WrongSize);
+                    }
+                    Err(err) => {
+                        read.finish(trace::ObjectOutcome::Failed);
+                        return Err(err);
+                    }
+                };
                 remaining_bytes -= chunk.len();
-                object_writer.write(chunk)?;
+                read.finish(trace::ObjectOutcome::Success);
+
+                let commit = object.phase(trace::ObjectPhase::FrameCommit);
+                match object_writer.write(chunk) {
+                    Ok(()) => commit.finish(trace::ObjectOutcome::Success),
+                    Err(err) => {
+                        commit.finish(trace::ObjectOutcome::Failed);
+                        return Err(err.into());
+                    }
+                }
             }
 
+            object.set_stream_offset_end(reader.offset());
+            object.finish(trace::ObjectOutcome::Success);
             object_count += 1;
         }
 
@@ -1416,6 +1489,7 @@ impl Subscriber {
         let publishes_received = self.publishes_received.clone();
         Self::recv_subgroup_objects(
             self.session_id.clone(),
+            self.trace().clone(),
             stream_header_type,
             subgroup_header,
             reader,
@@ -1569,6 +1643,7 @@ mod tests {
             request_id,
             PendingRequests::default(),
             SessionId::generate(),
+            crate::trace::global(),
         )
     }
 

@@ -16,4 +16,5 @@ pub mod mlog;
 pub mod serve;
 pub mod session;
 pub mod setup;
+mod trace;
 pub mod watch;

@@ -13,6 +13,7 @@ use crate::data::DataStreamResetCode;
 use crate::message::RequestErrorCode;
 use crate::mlog;
 use crate::serve::{ServeError, TrackReaderMode};
+use crate::trace;
 use crate::watch::State;
 use crate::{data, message, serve};
 
@@ -300,6 +301,24 @@ impl SubgroupOutput {
         self.owed == 0
     }
 
+    /// Transport stream identifier of the output, when the transport reports one.
+    fn stream_id(&self) -> Option<u64> {
+        match &self.sink {
+            SubgroupSink::Stream(stream) => stream.writer.stream_id(),
+            #[cfg(test)]
+            SubgroupSink::Buffer { .. } => None,
+        }
+    }
+
+    /// Absolute stream offset of the next byte to be written.
+    fn stream_offset(&self) -> u64 {
+        match &self.sink {
+            SubgroupSink::Stream(stream) => stream.writer.offset(),
+            #[cfg(test)]
+            SubgroupSink::Buffer { buffer, .. } => buffer.len() as u64,
+        }
+    }
+
     /// FIN the stream, asserting the whole subgroup was delivered.
     ///
     /// Only legal at an object boundary; finishing while payload bytes are still
@@ -581,6 +600,7 @@ impl ObjectForwarder {
             state,
             mlog,
             delivery_filter,
+            publisher.trace(),
         )
         .await;
 
@@ -632,6 +652,7 @@ impl ObjectForwarder {
         Ok(None)
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn serve_subgroup_objects(
         header: data::SubgroupHeader,
         mut subgroup_reader: serve::SubgroupReader,
@@ -640,6 +661,7 @@ impl ObjectForwarder {
         state: State<ObjectForwarderState>,
         mlog: Option<Arc<Mutex<mlog::MlogWriter>>>,
         delivery_filter: DeliveryFilter,
+        trace: &trace::Handle,
     ) -> Result<(), SessionError> {
         tracing::trace!(
             "[PUBLISHER] serve_subgroup: sending header - track_alias={}, group_id={}, subgroup_id={:?}, priority={}, header_type={:?}",
@@ -675,6 +697,27 @@ impl ObjectForwarder {
                 }
             };
 
+            let mut context = trace::ObjectContext::new(
+                trace::Direction::Tx,
+                trace::ObjectIdentity::new(
+                    header.track_alias,
+                    subgroup_reader.group_id,
+                    subgroup_object_reader.object_id,
+                ),
+                trace::LogicalId::new(
+                    subgroup_object_reader.trace_group(),
+                    subgroup_object_reader.object_id,
+                ),
+            )
+            .with_payload_bytes(subgroup_object_reader.size as u64)
+            .with_stream_offset_start(output.stream_offset());
+            if let Some(stream_id) = output.stream_id() {
+                context = context.with_stream_id(stream_id);
+            }
+            let mut object = trace.object(context);
+            // The relay model object is copied into its wire form here, which
+            // includes cloning the extension headers out of the shared object.
+            let clone = object.phase(trace::ObjectPhase::Clone);
             let subgroup_object = data::SubgroupObjectExt {
                 // TODO(itzmanish): compute real delta when the receive side uses object IDs
                 // for ordering. Both sender and receiver must agree on the same prev tracking
@@ -689,6 +732,7 @@ impl ObjectForwarder {
                     None
                 },
             };
+            clone.finish(trace::ObjectOutcome::Success);
 
             tracing::trace!(
                 "[PUBLISHER] serve_subgroup: sending object #{} - object_id={}, object_id_delta={}, payload_length={}, status={:?}, extension_headers={:?}",
@@ -714,7 +758,14 @@ impl ObjectForwarder {
                     subgroup_object_reader.object_id,
                 )?;
 
-            output.encode(&subgroup_object).await?;
+            let encode = object.phase(trace::ObjectPhase::HeaderEncode);
+            match output.encode(&subgroup_object).await {
+                Ok(()) => encode.finish(trace::ObjectOutcome::Success),
+                Err(err) => {
+                    encode.finish(trace::ObjectOutcome::Failed);
+                    return Err(err);
+                }
+            }
             // From here until the payload is fully written we are mid-object and
             // must not FIN.
             output.begin_object(subgroup_object.payload_length);
@@ -746,7 +797,14 @@ impl ObjectForwarder {
                     chunk.len()
                 );
                 bytes_sent += chunk.len();
-                output.write(&chunk).await?;
+                let write = object.phase(trace::ObjectPhase::PayloadWrite);
+                match output.write(&chunk).await {
+                    Ok(()) => write.finish(trace::ObjectOutcome::Success),
+                    Err(err) => {
+                        write.finish(trace::ObjectOutcome::Failed);
+                        return Err(err);
+                    }
+                }
                 chunks_sent += 1;
             }
 
@@ -772,6 +830,8 @@ impl ObjectForwarder {
                 return Err(ServeError::Size.into());
             }
 
+            object.set_stream_offset_end(output.stream_offset());
+            object.finish(trace::ObjectOutcome::Success);
             object_count += 1;
         }
 
@@ -832,6 +892,7 @@ impl ObjectForwarder {
             state,
             None,
             delivery_filter,
+            &trace::global(),
         )
         .await;
 

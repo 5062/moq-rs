@@ -20,6 +20,25 @@ resolver = "2"
 web-transport = "0.10.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# MoQ object instrumentation. Only the `trace` feature of the crates below
+# turns on the LTTng provider; without it nothing links it.
+moq-trace = { version = "0.1", default-features = false }
+
+# A patch applies to every build, so the default build uses the forks too. They
+# are drop-in replacements: the instrumentation they add is compiled out unless
+# the matching feature is on. The toolkit is not published yet, so it resolves
+# from the sibling checkout; drop that line once moq-trace ships a release.
+#
+# Quinn and web-transport come from the toolkit's forks: upstream Quinn has no
+# hook for packet, STREAM frame, or socket events, and only the fork exposes the
+# connection and stream identity the transport provider records.
+[patch.crates-io]
+moq-trace = { path = "../moq-trace2/crates/moq-trace" }
+quinn = { git = "https://github.com/5062/quinn", branch = "moq-trace/quinn-0.11" }
+quinn-proto = { git = "https://github.com/5062/quinn", branch = "moq-trace/quinn-0.11" }
+web-transport = { git = "https://github.com/5062/web-transport", branch = "moq-trace/web-transport-quinn-v0.11.11" }
+web-transport-quinn = { git = "https://github.com/5062/web-transport", branch = "moq-trace/web-transport-quinn-v0.11.11" }
+web-transport-trait = { git = "https://github.com/5062/web-transport", branch = "moq-trace/web-transport-quinn-v0.11.11" }
 
 # Use debug symbols in production until things are more stable
 [profile.release]

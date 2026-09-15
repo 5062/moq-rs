@@ -318,12 +318,31 @@ impl SubgroupWriter {
         size: usize,
         extension_headers: Option<crate::data::ExtensionHeaders>,
     ) -> Result<SubgroupObjectWriter, ServeError> {
+        // Objects created outside an inbound stream still need an identity of
+        // their own, so give each its own group instance.
+        self.create_traced(size, extension_headers, crate::trace::next_group_instance())
+    }
+
+    /// Create an object that belongs to an already-identified ingest group.
+    ///
+    /// The receiving side allocates the group instance before it reads the
+    /// header, so the inbound trace and every outbound copy of the object can
+    /// agree on one logical identity.
+    #[cfg_attr(not(feature = "trace"), allow(unused_variables))]
+    pub(crate) fn create_traced(
+        &mut self,
+        size: usize,
+        extension_headers: Option<crate::data::ExtensionHeaders>,
+        trace_group: u64,
+    ) -> Result<SubgroupObjectWriter, ServeError> {
         let (writer, reader) = SubgroupObject {
             group: self.info.clone(),
             object_id: self.next_object_id,
             status: ObjectStatus::NormalObject,
             size,
             extension_headers: extension_headers.unwrap_or_default(),
+            #[cfg(feature = "trace")]
+            trace_group,
         }
         .produce();
 
@@ -447,6 +466,11 @@ pub struct SubgroupObject {
 
     pub object_id: u64,
 
+    // Process-unique identity of the ingest group this object belongs to. An
+    // outbound copy carries the same value, which is what pairs the two traces.
+    #[cfg(feature = "trace")]
+    pub(crate) trace_group: u64,
+
     // The size of the object.
     pub size: usize,
 
@@ -458,6 +482,21 @@ pub struct SubgroupObject {
 }
 
 impl SubgroupObject {
+    /// Process-unique identity of the ingest group this object belongs to.
+    ///
+    /// Outbound copies carry the same value as the object they were read from,
+    /// which is what lets an outbound trace be paired with its inbound one.
+    pub(crate) fn trace_group(&self) -> u64 {
+        #[cfg(feature = "trace")]
+        {
+            self.trace_group
+        }
+        #[cfg(not(feature = "trace"))]
+        {
+            0
+        }
+    }
+
     pub fn produce(self) -> (SubgroupObjectWriter, SubgroupObjectReader) {
         let (writer, reader) = State::default().split();
         let info = Arc::new(self);
@@ -645,6 +684,35 @@ mod tests {
     /// Helper: deterministic payload for (group_id, object_id).
     fn payload(group_id: u64, object_id: u64) -> Bytes {
         Bytes::from(format!("g{}-o{}", group_id, object_id))
+    }
+
+    /// An object carries the ingest group identity it was created with, so the
+    /// outbound copy of one object can be paired with the inbound trace.
+    #[cfg(feature = "trace")]
+    #[tokio::test]
+    async fn traced_objects_share_the_ingest_group_identity() {
+        let (mut writer, mut reader) = make_subgroups();
+
+        let mut sg = writer.append(0).unwrap();
+
+        // The identity the receiver allocated for the ingest group is carried
+        // onto the object it produced.
+        let mut traced = sg.create_traced(1, None, 7).unwrap();
+        traced.write(Bytes::from_static(b"x")).unwrap();
+
+        // A standalone object has no inbound trace to pair with, so it gets an
+        // identity of its own rather than reusing the previous group.
+        sg.write(Bytes::from_static(b"y")).unwrap();
+        sg.write(Bytes::from_static(b"z")).unwrap();
+        drop(sg);
+
+        let sub = reader.next().await.unwrap().expect("expected a subgroup");
+        let mut sub = sub.clone();
+        assert_eq!(sub.next().await.unwrap().unwrap().info.trace_group(), 7);
+
+        let first = sub.next().await.unwrap().unwrap().info.trace_group();
+        let second = sub.next().await.unwrap().unwrap().info.trace_group();
+        assert_ne!(first, second);
     }
 
     // ---------------------------------------------------------------

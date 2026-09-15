@@ -76,6 +76,22 @@ Typical development workflow:
 
 See the [dev helper scripts](dev/README.md) for more options and workflows.
 
+### Tracing
+
+The `trace` feature records `moq_trace:*` object lifecycle events and the
+`quic_trace:*` transport events that carried them, so a capture can be reduced to
+per-object latency and packet coverage:
+
+```bash
+cargo build --release -p moq-relay-ietf --features trace
+```
+
+It requires Linux with the lttng-ust headers installed, and it builds against the
+instrumented Quinn and web-transport forks pinned in the workspace `[patch]`
+section. The capture and analysis tooling lives in the sibling `moq-trace`
+checkout; see its README for the LTTng session setup and the `moq_trace.cli
+analyze` step. The flag is off by default and adds nothing to a normal build.
+
 ## Usage
 
 For detailed usage information, see the README in each crate directory:

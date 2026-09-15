@@ -14,19 +14,54 @@ pub struct Reader {
     session_id: SessionId,
     stream: web_transport::RecvStream,
     buffer: BytesMut,
+    /// Absolute stream offset of the next unconsumed byte.
+    ///
+    /// Only the tracing build advances or reads it.
+    #[cfg(feature = "trace")]
+    offset: u64,
 }
 
 impl Reader {
     pub fn new(session_id: SessionId, stream: web_transport::RecvStream) -> Self {
+        // WebTransport prefixes each stream, so application byte zero sits at a
+        // non-zero transport offset.
+        #[cfg(feature = "trace")]
+        let offset = stream.stream_id().map_or(0, |id| id.offset());
         Self {
             session_id,
             stream,
             buffer: Default::default(),
+            #[cfg(feature = "trace")]
+            offset,
         }
     }
 
     pub fn session_id(&self) -> &SessionId {
         &self.session_id
+    }
+
+    /// Absolute stream offset of the next unconsumed byte.
+    pub(crate) fn offset(&self) -> u64 {
+        #[cfg(feature = "trace")]
+        {
+            self.offset
+        }
+        #[cfg(not(feature = "trace"))]
+        {
+            0
+        }
+    }
+
+    /// Transport stream identifier, when the transport exposes one.
+    pub(crate) fn stream_id(&self) -> Option<u64> {
+        #[cfg(feature = "trace")]
+        {
+            self.stream.stream_id().map(|id| id.id())
+        }
+        #[cfg(not(feature = "trace"))]
+        {
+            None
+        }
     }
 
     pub async fn decode<T: Decode>(&mut self) -> Result<T, SessionError> {
@@ -44,6 +79,10 @@ impl Reader {
                 Ok(msg) => {
                     let consumed = cursor.position() as usize;
                     self.buffer.advance(consumed);
+                    #[cfg(feature = "trace")]
+                    {
+                        self.offset += consumed as u64;
+                    }
                     tracing::trace!(
                         "[READER] decode: successfully decoded {} (consumed={} bytes, buffer_remaining={})",
                         std::any::type_name::<T>(),
@@ -117,6 +156,10 @@ impl Reader {
         if !self.buffer.is_empty() {
             let size = cmp::min(max, self.buffer.len());
             let data = self.buffer.split_to(size).freeze();
+            #[cfg(feature = "trace")]
+            {
+                self.offset += data.len() as u64;
+            }
             tracing::trace!(
                 "[READER] read_chunk: returned {} bytes from buffer (buffer_remaining={})",
                 data.len(),
@@ -127,6 +170,10 @@ impl Reader {
 
         let chunk = self.stream.read(max).await?;
         if let Some(ref data) = chunk {
+            #[cfg(feature = "trace")]
+            {
+                self.offset += data.len() as u64;
+            }
             tracing::trace!("[READER] read_chunk: read {} bytes from stream", data.len());
         } else {
             tracing::trace!("[READER] read_chunk: stream returned None");

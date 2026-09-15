@@ -16,6 +16,7 @@ use crate::{
     serve::{FullTrackName, ServeError, TrackReader, TracksReader},
 };
 
+use crate::trace;
 use crate::watch::Queue;
 
 use super::{
@@ -137,6 +138,9 @@ pub struct Publisher {
 
     /// Correlation id of the owning session, tagged onto this publisher's log records.
     session_id: SessionId,
+
+    /// Object instrumentation handle, shared with the session's subscriber half.
+    trace: trace::Handle,
 }
 
 impl Publisher {
@@ -147,6 +151,7 @@ impl Publisher {
         request_id: RequestId,
         pending_requests: PendingRequests,
         session_id: SessionId,
+        trace: trace::Handle,
     ) -> Self {
         Self {
             webtransport,
@@ -164,12 +169,18 @@ impl Publisher {
             pending_requests,
             mlog,
             session_id,
+            trace,
         }
     }
 
     /// Correlation id of the session this publisher belongs to.
     pub fn session_id(&self) -> &SessionId {
         &self.session_id
+    }
+
+    /// Object instrumentation handle for this session.
+    pub(crate) fn trace(&self) -> &trace::Handle {
+        &self.trace
     }
 
     /// Accept a publisher session using a generated local correlation ID.

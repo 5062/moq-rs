@@ -80,3 +80,6 @@ tracing-subscriber = { workspace = true }
 [features]
 default = []
 metrics-prometheus = ["dep:metrics-exporter-prometheus"]
+# Emit moq_trace:* and quic_trace:* LTTng events describing relay object
+# lifecycles and the packets that carry them.
+trace = ["moq-transport/trace", "moq-native-ietf/trace"]

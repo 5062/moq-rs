@@ -581,6 +581,16 @@ impl Session {
         let pending_requests = PendingRequests::default();
         let subscribe_namespace_open = Queue::default().split();
 
+        // One handle per session, so object events from both halves share a
+        // session ID and can be told apart within the process.
+        let trace = crate::trace::global().with_new_session_id();
+        // The transport connection identity is what ties an object to the
+        // packets that carried it, so tag it when the transport reports one.
+        let trace = match webtransport.connection_id() {
+            Some(connection_id) => trace.with_connection_id(connection_id.into_inner()),
+            None => trace,
+        };
+
         // Wrap mlog in Arc<Mutex<>> for sharing across tasks
         let mlog_shared = mlog.map(|m| Arc::new(Mutex::new(m)));
 
@@ -591,6 +601,7 @@ impl Session {
             request_id.clone(),
             pending_requests.clone(),
             session_id.clone(),
+            trace.clone(),
         ));
         let subscriber = Some(Subscriber::new(
             outgoing.0,
@@ -599,6 +610,7 @@ impl Session {
             request_id.clone(),
             pending_requests.clone(),
             session_id.clone(),
+            trace,
         ));
 
         let session = Self {

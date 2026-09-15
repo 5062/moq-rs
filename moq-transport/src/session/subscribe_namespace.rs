@@ -439,6 +439,7 @@ mod tests {
             request_id,
             PendingRequests::default(),
             SessionId::generate(),
+            crate::trace::global(),
         )
     }
 

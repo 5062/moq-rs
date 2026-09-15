@@ -13,20 +13,55 @@ pub struct Writer {
     session_id: SessionId,
     stream: web_transport::SendStream,
     buffer: bytes::BytesMut,
+    /// Absolute stream offset of the next byte to write.
+    ///
+    /// Only the tracing build advances or reads it.
+    #[cfg(feature = "trace")]
+    offset: u64,
 }
 
 impl Writer {
     pub fn new(session_id: SessionId, stream: web_transport::SendStream) -> Self {
+        // WebTransport prefixes each stream, so application byte zero sits at a
+        // non-zero transport offset.
+        #[cfg(feature = "trace")]
+        let offset = stream.stream_id().map_or(0, |id| id.offset());
         Self {
             session_id,
             stream,
             buffer: Default::default(),
+            #[cfg(feature = "trace")]
+            offset,
         }
     }
 
     /// The id of the session that owns this stream.
     pub fn session_id(&self) -> &SessionId {
         &self.session_id
+    }
+
+    /// Absolute byte offset of the next byte to be written on this stream.
+    pub(crate) fn offset(&self) -> u64 {
+        #[cfg(feature = "trace")]
+        {
+            self.offset
+        }
+        #[cfg(not(feature = "trace"))]
+        {
+            0
+        }
+    }
+
+    /// Transport stream identifier, when the transport exposes one.
+    pub(crate) fn stream_id(&self) -> Option<u64> {
+        #[cfg(feature = "trace")]
+        {
+            self.stream.stream_id().map(|id| id.id())
+        }
+        #[cfg(not(feature = "trace"))]
+        {
+            None
+        }
     }
 
     pub async fn encode<T: Encode>(&mut self, msg: &T) -> Result<(), SessionError> {
@@ -63,6 +98,10 @@ impl Writer {
             total_written
         );
 
+        #[cfg(feature = "trace")]
+        {
+            self.offset += total_written as u64;
+        }
         Ok(())
     }
 
@@ -95,6 +134,10 @@ impl Writer {
 
         tracing::trace!("[WRITER] write: finished writing {} bytes", total_written);
 
+        #[cfg(feature = "trace")]
+        {
+            self.offset += total_written as u64;
+        }
         Ok(())
     }
 
