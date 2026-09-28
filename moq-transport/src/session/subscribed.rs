@@ -758,14 +758,14 @@ impl ObjectForwarder {
                     subgroup_object_reader.object_id,
                 )?;
 
-            let encode = object.phase(trace::ObjectPhase::HeaderEncode);
-            match output.encode(&subgroup_object).await {
-                Ok(()) => encode.finish(trace::ObjectOutcome::Success),
-                Err(err) => {
-                    encode.finish(trace::ObjectOutcome::Failed);
-                    return Err(err);
-                }
-            }
+            // Flow control can block the header write, so only the polls that
+            // encode count.
+            object
+                .measure(
+                    trace::ObjectPhase::HeaderEncode,
+                    output.encode(&subgroup_object),
+                )
+                .await?;
             // From here until the payload is fully written we are mid-object and
             // must not FIN.
             output.begin_object(subgroup_object.payload_length);
@@ -797,14 +797,10 @@ impl ObjectForwarder {
                     chunk.len()
                 );
                 bytes_sent += chunk.len();
-                let write = object.phase(trace::ObjectPhase::PayloadWrite);
-                match output.write(&chunk).await {
-                    Ok(()) => write.finish(trace::ObjectOutcome::Success),
-                    Err(err) => {
-                        write.finish(trace::ObjectOutcome::Failed);
-                        return Err(err);
-                    }
-                }
+                // Time blocked on flow control belongs to no phase.
+                object
+                    .measure(trace::ObjectPhase::PayloadWrite, output.write(&chunk))
+                    .await?;
                 chunks_sent += 1;
             }
 

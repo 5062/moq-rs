@@ -131,6 +131,14 @@ impl ObjectTrace {
         }
     }
 
+    /// Run a phase that awaits I/O. Without tracing it only runs the future.
+    pub(crate) async fn measure<F, T, E>(&mut self, _phase: ObjectPhase, future: F) -> Result<T, E>
+    where
+        F: std::future::Future<Output = Result<T, E>>,
+    {
+        future.await
+    }
+
     /// Finish the object interval with the latest metadata and result.
     pub(crate) fn finish(self, _outcome: ObjectOutcome) {}
 }

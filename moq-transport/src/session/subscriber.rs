@@ -1285,76 +1285,86 @@ impl Subscriber {
                 context = context.with_stream_id(stream_id);
             }
             let mut object = trace.object(context);
-            let mut header = object.phase(trace::ObjectPhase::HeaderParse);
+            // The header can straddle packets, so only the polls that parse count.
+            let (mut remaining_bytes, object_id_delta, status, decoded_object, current_object_id) =
+                object
+                    .measure(trace::ObjectPhase::HeaderParse, async {
+                            // Decode the object header.  Extension-header variant carries extra
+                            // relay-visible fields; plain variant does not.
+                            let (remaining_bytes, object_id_delta, status, decoded_object) =
+                                if stream_header_type.has_extension_headers() {
+                                    let object = reader.decode::<data::SubgroupObjectExt>().await?;
+                                    tracing::trace!(
+                                        "[SUBSCRIBER] recv_subgroup_objects: object #{} with ext headers \
+                                         object_id_delta={} payload={} status={:?} ext={:?}",
+                                        object_count + 1,
+                                        object.object_id_delta,
+                                        object.payload_length,
+                                        object.status,
+                                        object.extension_headers
+                                    );
+                                    // Check for known draft-14 extension types
+                                    if object.extension_headers.has(0xB) {
+                                        tracing::trace!(
+                                            "[SUBSCRIBER] recv_subgroup_objects: object #{} has IMMUTABLE EXTENSIONS (0xB)",
+                                            object_count + 1
+                                        );
+                                    }
+                                    if object.extension_headers.has(0x3C) {
+                                        tracing::trace!(
+                                            "[SUBSCRIBER] recv_subgroup_objects: object #{} has PRIOR GROUP ID GAP (0x3C)",
+                                            object_count + 1
+                                        );
+                                    }
+                                    let obj_copy = object.clone();
+                                    (
+                                        object.payload_length,
+                                        object.object_id_delta,
+                                        object.status,
+                                        Some(obj_copy),
+                                    )
+                                } else {
+                                    let object = reader.decode::<data::SubgroupObject>().await?;
+                                    tracing::trace!(
+                                        "[SUBSCRIBER] recv_subgroup_objects: object #{} \
+                                         object_id_delta={} payload={} status={:?}",
+                                        object_count + 1,
+                                        object.object_id_delta,
+                                        object.payload_length,
+                                        object.status
+                                    );
+                                    (
+                                        object.payload_length,
+                                        object.object_id_delta,
+                                        object.status,
+                                        None,
+                                    )
+                                };
 
-            // Decode the object header.  Extension-header variant carries extra
-            // relay-visible fields; plain variant does not.
-            let (mut remaining_bytes, object_id_delta, status, decoded_object) =
-                if stream_header_type.has_extension_headers() {
-                    let object = reader.decode::<data::SubgroupObjectExt>().await?;
-                    tracing::trace!(
-                        "[SUBSCRIBER] recv_subgroup_objects: object #{} with ext headers \
-                         object_id_delta={} payload={} status={:?} ext={:?}",
-                        object_count + 1,
-                        object.object_id_delta,
-                        object.payload_length,
-                        object.status,
-                        object.extension_headers
-                    );
-                    // Check for known draft-14 extension types
-                    if object.extension_headers.has(0xB) {
-                        tracing::trace!(
-                            "[SUBSCRIBER] recv_subgroup_objects: object #{} has IMMUTABLE EXTENSIONS (0xB)",
-                            object_count + 1
-                        );
-                    }
-                    if object.extension_headers.has(0x3C) {
-                        tracing::trace!(
-                            "[SUBSCRIBER] recv_subgroup_objects: object #{} has PRIOR GROUP ID GAP (0x3C)",
-                            object_count + 1
-                        );
-                    }
-                    let obj_copy = object.clone();
-                    (
-                        object.payload_length,
-                        object.object_id_delta,
-                        object.status,
-                        Some(obj_copy),
-                    )
-                } else {
-                    let object = reader.decode::<data::SubgroupObject>().await?;
-                    tracing::trace!(
-                        "[SUBSCRIBER] recv_subgroup_objects: object #{} \
-                         object_id_delta={} payload={} status={:?}",
-                        object_count + 1,
-                        object.object_id_delta,
-                        object.payload_length,
-                        object.status
-                    );
-                    (
-                        object.payload_length,
-                        object.object_id_delta,
-                        object.status,
-                        None,
-                    )
-                };
-
-            // Compute the absolute object ID from the delta.
-            let current_object_id = match previous_object_id {
-                Some(prev) => prev
-                    .checked_add(object_id_delta)
-                    .and_then(|v| v.checked_add(1))
-                    .ok_or_else(|| {
-                        SessionError::ProtocolViolation("subgroup object id overflow".to_string())
-                    })?,
-                None => object_id_delta,
-            };
+                            // Compute the absolute object ID from the delta.
+                            let current_object_id = match previous_object_id {
+                                Some(prev) => prev
+                                    .checked_add(object_id_delta)
+                                    .and_then(|v| v.checked_add(1))
+                                    .ok_or_else(|| {
+                                        SessionError::ProtocolViolation("subgroup object id overflow".to_string())
+                                    })?,
+                                None => object_id_delta,
+                            };
+                        Ok::<_, SessionError>((
+                            remaining_bytes,
+                            object_id_delta,
+                            status,
+                            decoded_object,
+                            current_object_id,
+                        ))
+                    })
+                    .await?;
             previous_object_id = Some(current_object_id);
 
             let extension_headers = decoded_object.as_ref().map(|o| o.extension_headers.clone());
 
-            header.set_payload_bytes(remaining_bytes as u64);
-            header.finish(trace::ObjectOutcome::Success);
+            object.set_payload_bytes(remaining_bytes as u64);
 
             // Non-normal status with extension headers is a protocol violation.
             if status.is_some_and(|s| s != data::ObjectStatus::NormalObject)
@@ -1427,25 +1437,20 @@ impl Subscriber {
             };
 
             while remaining_bytes > 0 {
-                let read = object.phase(trace::ObjectPhase::PayloadRead);
-                let chunk = match reader.read_chunk(remaining_bytes).await {
-                    Ok(Some(chunk)) => chunk,
-                    Ok(None) => {
-                        read.finish(trace::ObjectOutcome::Failed);
-                        tracing::error!(
-                            session_id = %session_id,
-                            "[SUBSCRIBER] recv_subgroup_objects: stream ended with {} bytes remaining",
-                            remaining_bytes
-                        );
-                        return Err(SessionError::WrongSize);
-                    }
-                    Err(err) => {
-                        read.finish(trace::ObjectOutcome::Failed);
-                        return Err(err);
-                    }
-                };
+                // Only the polls that hand over bytes count; waiting for them does not.
+                let chunk = object
+                    .measure(trace::ObjectPhase::PayloadRead, async {
+                        reader.read_chunk(remaining_bytes).await?.ok_or_else(|| {
+                            tracing::error!(
+                                session_id = %session_id,
+                                "[SUBSCRIBER] recv_subgroup_objects: stream ended with {} bytes remaining",
+                                remaining_bytes
+                            );
+                            SessionError::WrongSize
+                        })
+                    })
+                    .await?;
                 remaining_bytes -= chunk.len();
-                read.finish(trace::ObjectOutcome::Success);
 
                 let commit = object.phase(trace::ObjectPhase::FrameCommit);
                 match object_writer.write(chunk) {

@@ -42,4 +42,4 @@ tracing = { workspace = true }
 default = []
 # Record quic_trace:* transport events alongside the MoQ object events. Needs the
 # patched Quinn and web-transport that expose the instrumentation hooks.
-trace = ["moq-transport/trace", "quinn/moq-trace"]
+trace = ["moq-transport/trace", "quinn/moq-trace", "web-transport-quinn/moq-trace"]
