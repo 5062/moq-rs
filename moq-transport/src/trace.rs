@@ -19,13 +19,11 @@ pub(crate) use moq_trace::{
 /// alias is scoped to a session, so the alias an object arrives under differs
 /// from the alias it leaves under. The receiver allocates this before it reads
 /// the object header and stores it on the object, so the inbound trace and every
-/// outbound copy agree.
+/// outbound copy agree. The toolkit owns the counter, so the group stays unique
+/// even alongside other instrumented code in the process.
 #[cfg(feature = "trace")]
 pub(crate) fn next_group_instance() -> u64 {
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    static NEXT_GROUP_INSTANCE: AtomicU64 = AtomicU64::new(1);
-    NEXT_GROUP_INSTANCE.fetch_add(1, Ordering::Relaxed)
+    moq_trace::next_logical_group()
 }
 
 /// Return the process-global handle shared by every instrumented session.
