@@ -21,5 +21,28 @@
           pkgs = nixpkgs.legacyPackages.${system};
         }
       );
+
+      devShells = forAllSystems (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          default = pkgs.mkShell {
+            packages =
+              with pkgs;
+              [
+                cargo
+                clippy
+                rustc
+                rustfmt
+                openssl
+                pkg-config
+                rustPlatform.bindgenHook
+              ]
+              ++ lib.optionals stdenv.hostPlatform.isLinux [ lttng-ust ];
+          };
+        }
+      );
     };
 }

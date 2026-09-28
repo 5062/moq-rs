@@ -83,10 +83,11 @@ The `trace` feature records `moq_trace:*` object lifecycle events and the
 per-object latency and packet coverage:
 
 ```bash
-cargo build --release -p moq-relay-ietf --features trace
+nix develop --command cargo build --release -p moq-relay-ietf --features trace
 ```
 
-It requires Linux with the lttng-ust headers installed. The capture and analysis
+It requires Linux with the lttng-ust headers installed, which the flake's dev
+shell provides along with the C toolchain and pkg-config. The capture and analysis
 tooling lives in the [moq-trace](https://github.com/5062/moq-trace) toolkit; see
 its README for the LTTng session setup and the `moq_trace.cli analyze` step.
 
