@@ -1457,6 +1457,12 @@ impl Subscriber {
                 }
             }
 
+            // An object reader sees the end of the object only when its writer
+            // drops, so completion is commit work and gets a final phase.
+            let commit = object.phase(trace::ObjectPhase::FrameCommit);
+            drop(object_writer);
+            commit.finish(trace::ObjectOutcome::Success);
+
             object.set_stream_offset_end(reader.offset());
             object.finish(trace::ObjectOutcome::Success);
             object_count += 1;
