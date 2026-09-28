@@ -86,11 +86,20 @@ per-object latency and packet coverage:
 cargo build --release -p moq-relay-ietf --features trace
 ```
 
-It requires Linux with the lttng-ust headers installed, and it builds against the
-instrumented Quinn and web-transport forks pinned in the workspace `[patch]`
-section. The capture and analysis tooling lives in the sibling `moq-trace`
-checkout; see its README for the LTTng session setup and the `moq_trace.cli
-analyze` step. The flag is off by default and adds nothing to a normal build.
+It requires Linux with the lttng-ust headers installed. The capture and analysis
+tooling lives in the [moq-trace](https://github.com/5062/moq-trace) toolkit; see
+its README for the LTTng session setup and the `moq_trace.cli analyze` step.
+
+The flag is off by default, and without it no tracing code is compiled in. Two
+workspace `[patch]` entries still apply to every build, traced or not:
+
+- `moq-trace` resolves from the toolkit's git repository, pinned by
+  `Cargo.lock`. Cargo fetches it even when no feature enables it. To build
+  against a local toolkit checkout instead, pass
+  `--config 'patch.crates-io.moq-trace.path="../moq-trace2/crates/moq-trace"'`.
+  That rewrites `Cargo.lock` to the local path, so restore it before committing.
+- Quinn and web-transport resolve from the instrumented forks. Their hooks
+  compile out without the feature, but the forks replace upstream in every build.
 
 ## Usage
 

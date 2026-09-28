@@ -26,14 +26,17 @@ moq-trace = { version = "0.1", default-features = false }
 
 # A patch applies to every build, so the default build uses the forks too. They
 # are drop-in replacements: the instrumentation they add is compiled out unless
-# the matching feature is on. The toolkit is not published yet, so it resolves
-# from the sibling checkout; drop that line once moq-trace ships a release.
+# the matching feature is on. The toolkit is not on crates.io yet, so it
+# resolves from its git repository; drop that line once moq-trace ships a
+# release. To build against a local toolkit checkout instead, override it with
+# `--config 'patch.crates-io.moq-trace.path="../moq-trace2/crates/moq-trace"'`.
+# That rewrites Cargo.lock to the local path, so restore it before committing.
 #
 # Quinn and web-transport come from the toolkit's forks: upstream Quinn has no
 # hook for packet, STREAM frame, or socket events, and only the fork exposes the
 # connection and stream identity the transport provider records.
 [patch.crates-io]
-moq-trace = { path = "../moq-trace2/crates/moq-trace" }
+moq-trace = { git = "https://github.com/5062/moq-trace", branch = "main" }
 quinn = { git = "https://github.com/5062/quinn", branch = "moq-trace/quinn-0.11" }
 quinn-proto = { git = "https://github.com/5062/quinn", branch = "moq-trace/quinn-0.11" }
 web-transport = { git = "https://github.com/5062/web-transport", branch = "moq-trace/web-transport-quinn-v0.11.11" }
