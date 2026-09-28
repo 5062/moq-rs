@@ -704,10 +704,9 @@ impl ObjectForwarder {
                     subgroup_reader.group_id,
                     subgroup_object_reader.object_id,
                 ),
-                trace::LogicalId::new(
-                    subgroup_object_reader.trace_group(),
-                    subgroup_object_reader.object_id,
-                ),
+                // Read back the identity the inbound trace chose. The model's
+                // object ID is a separate counter and need not match it.
+                subgroup_object_reader.logical_id(),
             )
             .with_payload_bytes(subgroup_object_reader.size as u64)
             .with_stream_offset_start(output.stream_offset());

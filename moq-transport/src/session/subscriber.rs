@@ -1271,6 +1271,11 @@ impl Subscriber {
             // reporting, so anticipate the identity and start the trace before
             // the header it describes.
             let anticipated_object_id = previous_object_id.map_or(0, |prev| prev + 1);
+            // The logical frame is this object's ordinal on the stream, not its
+            // wire ID: a subgroup can start above zero or skip IDs. The model
+            // stores the identity on the object, so outbound copies reuse it
+            // instead of deriving their own.
+            let logical_id = trace::LogicalId::new(trace_group, object_count);
             let mut context = trace::ObjectContext::new(
                 trace::Direction::Rx,
                 trace::ObjectIdentity::new(
@@ -1278,7 +1283,7 @@ impl Subscriber {
                     subgroup_header.group_id,
                     anticipated_object_id,
                 ),
-                trace::LogicalId::new(trace_group, anticipated_object_id),
+                logical_id,
             )
             .with_stream_offset_start(reader.offset());
             if let Some(stream_id) = reader.stream_id() {
@@ -1421,20 +1426,18 @@ impl Subscriber {
             // TODO SLG - object_id_delta and object status are still being ignored
             let subgroup_writer = subgroup_writer.as_mut().ok_or(SessionError::Internal)?;
             let create = object.phase(trace::ObjectPhase::Create);
-            let mut object_writer = match subgroup_writer.create_traced(
-                remaining_bytes,
-                extension_headers,
-                trace_group,
-            ) {
-                Ok(writer) => {
-                    create.finish(trace::ObjectOutcome::Success);
-                    writer
-                }
-                Err(err) => {
-                    create.finish(trace::ObjectOutcome::Failed);
-                    return Err(err.into());
-                }
-            };
+            let mut object_writer =
+                match subgroup_writer.create_traced(remaining_bytes, extension_headers, logical_id)
+                {
+                    Ok(writer) => {
+                        create.finish(trace::ObjectOutcome::Success);
+                        writer
+                    }
+                    Err(err) => {
+                        create.finish(trace::ObjectOutcome::Failed);
+                        return Err(err.into());
+                    }
+                };
 
             while remaining_bytes > 0 {
                 // Only the polls that hand over bytes count; waiting for them does not.

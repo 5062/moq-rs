@@ -24,7 +24,7 @@ thiserror = "1"
 tokio = { version = "1", features = ["macros", "io-util", "sync"] }
 tracing = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
-moq-trace = { workspace = true, optional = true }
+moq-trace = { workspace = true }
 
 web-transport = { workspace = true }
 
@@ -38,7 +38,7 @@ serde_with = "3"
 default = []
 # Emit moq_trace:* LTTng events describing the MoQ object lifecycle. Builds the
 # LTTng provider, so it needs the lttng-ust headers and a Linux target.
-trace = ["dep:moq-trace", "moq-trace/lttng"]
+trace = ["moq-trace/lttng"]
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }

@@ -3,14 +3,13 @@
 
 //! MoQ object instrumentation for the relay and its peers.
 //!
-//! With the `trace` feature every call forwards to `moq-trace`, which records
-//! `moq_trace:*` events under LTTng. Without the feature the same calls compile
-//! to no-ops, so a default build carries no tracing code and resolves no extra
-//! dependency.
+//! Every call forwards to `moq-trace`. With the `trace` feature it records
+//! `moq_trace:*` events under LTTng. Without it the toolkit's handles are
+//! disabled, so the same calls do no work. The toolkit is always linked, which
+//! keeps this crate on the real API rather than a stand-in that could drift.
 
-#[cfg(feature = "trace")]
 pub(crate) use moq_trace::{
-    Direction, Handle, LogicalId, ObjectContext, ObjectIdentity, ObjectOutcome, ObjectPhase,
+    global, Direction, Handle, LogicalId, ObjectContext, ObjectIdentity, ObjectOutcome, ObjectPhase,
 };
 
 /// Allocate a process-unique identity for one group of ingested objects.
@@ -21,22 +20,16 @@ pub(crate) use moq_trace::{
 /// the object header and stores it on the object, so the inbound trace and every
 /// outbound copy agree. The toolkit owns the counter, so the group stays unique
 /// even alongside other instrumented code in the process.
-#[cfg(feature = "trace")]
+///
+/// Without the `trace` feature nothing reads the identity, so this skips the
+/// shared counter on the per-object path.
 pub(crate) fn next_group_instance() -> u64 {
-    moq_trace::next_logical_group()
+    #[cfg(feature = "trace")]
+    {
+        moq_trace::next_logical_group()
+    }
+    #[cfg(not(feature = "trace"))]
+    {
+        0
+    }
 }
-
-/// Return the process-global handle shared by every instrumented session.
-#[cfg(feature = "trace")]
-pub(crate) fn global() -> Handle {
-    moq_trace::global()
-}
-
-#[cfg(not(feature = "trace"))]
-mod disabled;
-#[cfg(not(feature = "trace"))]
-#[allow(unused_imports)]
-pub(crate) use disabled::{
-    global, next_group_instance, Direction, Handle, LogicalId, ObjectContext, ObjectIdentity,
-    ObjectOutcome, ObjectPhase,
-};

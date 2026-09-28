@@ -320,20 +320,23 @@ impl SubgroupWriter {
     ) -> Result<SubgroupObjectWriter, ServeError> {
         // Objects created outside an inbound stream still need an identity of
         // their own, so give each its own group instance.
-        self.create_traced(size, extension_headers, crate::trace::next_group_instance())
+        let logical_id =
+            crate::trace::LogicalId::new(crate::trace::next_group_instance(), self.next_object_id);
+        self.create_traced(size, extension_headers, logical_id)
     }
 
-    /// Create an object that belongs to an already-identified ingest group.
+    /// Create an object whose logical identity the receiving side chose.
     ///
-    /// The receiving side allocates the group instance before it reads the
-    /// header, so the inbound trace and every outbound copy of the object can
-    /// agree on one logical identity.
+    /// The receiver starts its trace before it reads the object header, so it
+    /// picks the identity then and hands it here. Every outbound copy reads the
+    /// identity back from the object rather than deriving it again, because a
+    /// second derivation from other counters can disagree with the first.
     #[cfg_attr(not(feature = "trace"), allow(unused_variables))]
     pub(crate) fn create_traced(
         &mut self,
         size: usize,
         extension_headers: Option<crate::data::ExtensionHeaders>,
-        trace_group: u64,
+        logical_id: crate::trace::LogicalId,
     ) -> Result<SubgroupObjectWriter, ServeError> {
         let (writer, reader) = SubgroupObject {
             group: self.info.clone(),
@@ -342,7 +345,7 @@ impl SubgroupWriter {
             size,
             extension_headers: extension_headers.unwrap_or_default(),
             #[cfg(feature = "trace")]
-            trace_group,
+            logical_id,
         }
         .produce();
 
@@ -466,10 +469,10 @@ pub struct SubgroupObject {
 
     pub object_id: u64,
 
-    // Process-unique identity of the ingest group this object belongs to. An
-    // outbound copy carries the same value, which is what pairs the two traces.
+    // Logical identity the inbound trace recorded. An outbound copy carries the
+    // same value, which is what pairs the two traces.
     #[cfg(feature = "trace")]
-    pub(crate) trace_group: u64,
+    pub(crate) logical_id: crate::trace::LogicalId,
 
     // The size of the object.
     pub size: usize,
@@ -482,18 +485,18 @@ pub struct SubgroupObject {
 }
 
 impl SubgroupObject {
-    /// Process-unique identity of the ingest group this object belongs to.
+    /// Logical identity the inbound trace recorded for this object.
     ///
     /// Outbound copies carry the same value as the object they were read from,
     /// which is what lets an outbound trace be paired with its inbound one.
-    pub(crate) fn trace_group(&self) -> u64 {
+    pub(crate) fn logical_id(&self) -> crate::trace::LogicalId {
         #[cfg(feature = "trace")]
         {
-            self.trace_group
+            self.logical_id
         }
         #[cfg(not(feature = "trace"))]
         {
-            0
+            crate::trace::LogicalId::new(0, 0)
         }
     }
 
@@ -686,18 +689,19 @@ mod tests {
         Bytes::from(format!("g{}-o{}", group_id, object_id))
     }
 
-    /// An object carries the ingest group identity it was created with, so the
+    /// An object carries the logical identity it was created with, so the
     /// outbound copy of one object can be paired with the inbound trace.
     #[cfg(feature = "trace")]
     #[tokio::test]
-    async fn traced_objects_share_the_ingest_group_identity() {
+    async fn traced_objects_carry_the_receiver_logical_identity() {
         let (mut writer, mut reader) = make_subgroups();
 
         let mut sg = writer.append(0).unwrap();
 
-        // The identity the receiver allocated for the ingest group is carried
-        // onto the object it produced.
-        let mut traced = sg.create_traced(1, None, 7).unwrap();
+        // The identity the receiver chose is carried onto the object it
+        // produced, even when it differs from the model's own object ID.
+        let chosen = crate::trace::LogicalId::new(7, 5);
+        let mut traced = sg.create_traced(1, None, chosen).unwrap();
         traced.write(Bytes::from_static(b"x")).unwrap();
 
         // A standalone object has no inbound trace to pair with, so it gets an
@@ -708,11 +712,13 @@ mod tests {
 
         let sub = reader.next().await.unwrap().expect("expected a subgroup");
         let mut sub = sub.clone();
-        assert_eq!(sub.next().await.unwrap().unwrap().info.trace_group(), 7);
+        let object = sub.next().await.unwrap().unwrap();
+        assert_eq!(object.info.logical_id(), chosen);
+        assert_eq!(object.info.object_id, 0);
 
-        let first = sub.next().await.unwrap().unwrap().info.trace_group();
-        let second = sub.next().await.unwrap().unwrap().info.trace_group();
-        assert_ne!(first, second);
+        let first = sub.next().await.unwrap().unwrap().info.logical_id();
+        let second = sub.next().await.unwrap().unwrap().info.logical_id();
+        assert_ne!(first.group(), second.group());
     }
 
     // ---------------------------------------------------------------

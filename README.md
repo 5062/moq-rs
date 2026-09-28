@@ -90,7 +90,8 @@ It requires Linux with the lttng-ust headers installed. The capture and analysis
 tooling lives in the [moq-trace](https://github.com/5062/moq-trace) toolkit; see
 its README for the LTTng session setup and the `moq_trace.cli analyze` step.
 
-The flag is off by default, and without it no tracing code is compiled in. Two
+The flag is off by default. Without it the LTTng provider is not built or
+linked, and the `moq-trace` handles the relay calls are disabled no-ops. Two
 workspace `[patch]` entries still apply to every build, traced or not:
 
 - `moq-trace` resolves from the toolkit's git repository, pinned by
