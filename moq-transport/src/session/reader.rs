@@ -9,6 +9,7 @@ use bytes::{Buf, Bytes, BytesMut};
 use crate::coding::{Decode, DecodeError};
 
 use super::{SessionError, SessionId};
+use crate::trace;
 
 pub struct Reader {
     session_id: SessionId,
@@ -118,7 +119,10 @@ impl Reader {
             // We always read at least once to avoid an infinite loop if some dingus puts remain=0
             loop {
                 let before_read = self.buffer.len();
-                if self.stream.read_buf(&mut self.buffer).await?.is_none() {
+                if trace::transport_call(self.stream.read_buf(&mut self.buffer))
+                    .await?
+                    .is_none()
+                {
                     tracing::warn!(
                         session_id = %self.session_id,
                         "[READER] decode: stream ended while waiting for data (have={} bytes, need={})",
@@ -168,7 +172,7 @@ impl Reader {
             return Ok(Some(data));
         }
 
-        let chunk = self.stream.read(max).await?;
+        let chunk = trace::transport_call(self.stream.read(max)).await?;
         if let Some(ref data) = chunk {
             #[cfg(feature = "trace")]
             {
@@ -186,7 +190,11 @@ impl Reader {
             return Ok(false);
         }
 
-        Ok(self.stream.read_buf(&mut self.buffer).await?.is_none())
+        Ok(
+            trace::transport_call(self.stream.read_buf(&mut self.buffer))
+                .await?
+                .is_none(),
+        )
     }
 
     pub(super) fn stop(&mut self, code: u32) {

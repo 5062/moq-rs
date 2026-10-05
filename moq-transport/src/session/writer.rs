@@ -7,6 +7,7 @@ use std::io;
 use crate::coding::{Encode, EncodeError};
 
 use super::{SessionError, SessionId};
+use crate::trace;
 use bytes::Buf;
 
 pub struct Writer {
@@ -81,7 +82,7 @@ impl Writer {
 
         let mut total_written = 0;
         while !self.buffer.is_empty() {
-            let written = self.stream.write_buf(&mut self.buffer).await?;
+            let written = trace::transport_call(self.stream.write_buf(&mut self.buffer)).await?;
             total_written += written;
             tracing::trace!(
                 "[WRITER] encode: wrote {} bytes to stream (total={}/{}, remaining={})",
@@ -113,7 +114,7 @@ impl Writer {
         let mut total_written = 0;
 
         while cursor.has_remaining() {
-            let size = self.stream.write_buf(&mut cursor).await?;
+            let size = trace::transport_call(self.stream.write_buf(&mut cursor)).await?;
             if size == 0 {
                 tracing::error!(
                     session_id = %self.session_id,
