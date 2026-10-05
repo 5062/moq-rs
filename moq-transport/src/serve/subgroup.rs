@@ -346,6 +346,10 @@ impl SubgroupWriter {
             extension_headers: extension_headers.unwrap_or_default(),
             #[cfg(feature = "trace")]
             logical_id,
+            // Taken just before the object is published below. The object is
+            // immutable once shared, so the instant cannot be taken any later.
+            #[cfg(feature = "trace")]
+            ready_ns: crate::trace::readable_ns(),
         }
         .produce();
 
@@ -474,6 +478,11 @@ pub struct SubgroupObject {
     #[cfg(feature = "trace")]
     pub(crate) logical_id: crate::trace::LogicalId,
 
+    // When the object became readable to subscribers, on the trace clock. An
+    // outbound copy's delivery wait starts here.
+    #[cfg(feature = "trace")]
+    pub(crate) ready_ns: u64,
+
     // The size of the object.
     pub size: usize,
 
@@ -497,6 +506,20 @@ impl SubgroupObject {
         #[cfg(not(feature = "trace"))]
         {
             crate::trace::LogicalId::new(0, 0)
+        }
+    }
+
+    /// When the object became readable to subscribers, on the trace clock.
+    ///
+    /// Without the `trace` feature no instant is recorded.
+    pub(crate) fn ready_ns(&self) -> Option<u64> {
+        #[cfg(feature = "trace")]
+        {
+            Some(self.ready_ns)
+        }
+        #[cfg(not(feature = "trace"))]
+        {
+            None
         }
     }
 

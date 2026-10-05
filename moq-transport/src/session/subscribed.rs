@@ -714,9 +714,23 @@ impl ObjectForwarder {
                 context = context.with_stream_id(stream_id);
             }
             let mut object = trace.object(context);
+            // The copy waited from the instant the inbound object became readable
+            // until now, where its clone starts.
+            let clone = match subgroup_object_reader
+                .ready_ns()
+                .filter(|_| object.records_phases())
+            {
+                Some(ready_ns) => {
+                    let now = trace::now_ns();
+                    object
+                        .phase_at(trace::ObjectPhase::DeliveryWait, ready_ns)
+                        .finish_at(trace::ObjectOutcome::Success, now);
+                    object.phase_at(trace::ObjectPhase::Clone, now)
+                }
+                None => object.phase(trace::ObjectPhase::Clone),
+            };
             // The relay model object is copied into its wire form here, which
             // includes cloning the extension headers out of the shared object.
-            let clone = object.phase(trace::ObjectPhase::Clone);
             let subgroup_object = data::SubgroupObjectExt {
                 // TODO(itzmanish): compute real delta when the receive side uses object IDs
                 // for ordering. Both sender and receiver must agree on the same prev tracking
@@ -758,10 +772,11 @@ impl ObjectForwarder {
                 )?;
 
             // Flow control can block the header write, so only the polls that
-            // encode count.
+            // encode count, and the time between them is a blocked write.
             object
-                .measure(
+                .measure_waiting(
                     trace::ObjectPhase::HeaderEncode,
+                    trace::ObjectPhase::WriteBlocked,
                     output.encode(&subgroup_object),
                 )
                 .await?;
@@ -796,9 +811,13 @@ impl ObjectForwarder {
                     chunk.len()
                 );
                 bytes_sent += chunk.len();
-                // Time blocked on flow control belongs to no phase.
+                // Time blocked on flow control is a blocked write, not write work.
                 object
-                    .measure(trace::ObjectPhase::PayloadWrite, output.write(&chunk))
+                    .measure_waiting(
+                        trace::ObjectPhase::PayloadWrite,
+                        trace::ObjectPhase::WriteBlocked,
+                        output.write(&chunk),
+                    )
                     .await?;
                 chunks_sent += 1;
             }

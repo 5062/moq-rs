@@ -35,9 +35,13 @@ impl<T> StateInner<T> {
 
     pub fn notify(&mut self) {
         self.epoch += 1;
+        #[cfg(feature = "trace")]
+        let probe = super::probe::start();
         for waker in self.wakers.drain(..) {
             waker.wake();
         }
+        #[cfg(feature = "trace")]
+        super::probe::finish(probe);
     }
 }
 

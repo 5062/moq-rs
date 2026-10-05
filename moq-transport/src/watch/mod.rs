@@ -2,6 +2,8 @@
 // SPDX-FileCopyrightText: 2023-2024 Luke Curley and contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+#[cfg(feature = "trace")]
+pub(crate) mod probe;
 mod queue;
 mod state;
 

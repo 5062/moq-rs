@@ -1425,19 +1425,11 @@ impl Subscriber {
             // Write the object payload.
             // TODO SLG - object_id_delta and object status are still being ignored
             let subgroup_writer = subgroup_writer.as_mut().ok_or(SessionError::Internal)?;
-            let create = object.phase(trace::ObjectPhase::Create);
+            // Publishing the object to the subgroup wakes its subscribers.
             let mut object_writer =
-                match subgroup_writer.create_traced(remaining_bytes, extension_headers, logical_id)
-                {
-                    Ok(writer) => {
-                        create.finish(trace::ObjectOutcome::Success);
-                        writer
-                    }
-                    Err(err) => {
-                        create.finish(trace::ObjectOutcome::Failed);
-                        return Err(err.into());
-                    }
-                };
+                trace::publish(&mut object, trace::ObjectPhase::Create, || {
+                    subgroup_writer.create_traced(remaining_bytes, extension_headers, logical_id)
+                })?;
 
             while remaining_bytes > 0 {
                 // Only the polls that hand over bytes count; waiting for them does not.
@@ -1455,21 +1447,19 @@ impl Subscriber {
                     .await?;
                 remaining_bytes -= chunk.len();
 
-                let commit = object.phase(trace::ObjectPhase::FrameCommit);
-                match object_writer.write(chunk) {
-                    Ok(()) => commit.finish(trace::ObjectOutcome::Success),
-                    Err(err) => {
-                        commit.finish(trace::ObjectOutcome::Failed);
-                        return Err(err.into());
-                    }
-                }
+                // Writing a chunk wakes readers streaming the object.
+                trace::publish(&mut object, trace::ObjectPhase::FrameCommit, || {
+                    object_writer.write(chunk)
+                })?;
             }
 
             // An object reader sees the end of the object only when its writer
             // drops, so completion is commit work and gets a final phase.
-            let commit = object.phase(trace::ObjectPhase::FrameCommit);
-            drop(object_writer);
-            commit.finish(trace::ObjectOutcome::Success);
+            trace::publish(&mut object, trace::ObjectPhase::FrameCommit, || {
+                drop(object_writer);
+                Ok::<_, std::convert::Infallible>(())
+            })
+            .unwrap_or_else(|never| match never {});
 
             object.set_stream_offset_end(reader.offset());
             object.finish(trace::ObjectOutcome::Success);

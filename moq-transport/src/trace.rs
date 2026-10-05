@@ -9,8 +9,66 @@
 //! keeps this crate on the real API rather than a stand-in that could drift.
 
 pub(crate) use moq_trace::{
-    global, Direction, Handle, LogicalId, ObjectContext, ObjectIdentity, ObjectOutcome, ObjectPhase,
+    global, now_ns, Direction, Handle, LogicalId, ObjectContext, ObjectIdentity, ObjectOutcome,
+    ObjectPhase, ObjectTrace,
 };
+
+/// Run a step that makes received data readable in the relay model.
+///
+/// The model wakes waiting readers inside the step, when a modified state is
+/// released or a writer half drops. Each wake is recorded as
+/// [`ObjectPhase::Notify`], and the rest of the step as `phase`, so the step
+/// becomes alternating occurrences that never overlap. The last occurrence
+/// carries the step's outcome. Phases are emitted after the step returns, so
+/// emission adds nothing to the measured intervals.
+#[cfg(feature = "trace")]
+pub(crate) fn publish<T, E>(
+    object: &mut ObjectTrace,
+    phase: ObjectPhase,
+    step: impl FnOnce() -> Result<T, E>,
+) -> Result<T, E> {
+    if !object.records_phases() {
+        return step();
+    }
+    let start_ns = now_ns();
+    let (result, wakes) = crate::watch::probe::observe(now_ns, step);
+    let end_ns = now_ns();
+    let mut cursor = start_ns;
+    for &(wake_start, wake_end) in wakes.intervals() {
+        object
+            .phase_at(phase, cursor)
+            .finish_at(ObjectOutcome::Success, wake_start);
+        object
+            .phase_at(ObjectPhase::Notify, wake_start)
+            .finish_at(ObjectOutcome::Success, wake_end);
+        cursor = wake_end;
+    }
+    let outcome = match result {
+        Ok(_) => ObjectOutcome::Success,
+        Err(_) => ObjectOutcome::Failed,
+    };
+    object.phase_at(phase, cursor).finish_at(outcome, end_ns);
+    result
+}
+
+/// Run a step that makes received data readable; untraced builds record nothing.
+#[cfg(not(feature = "trace"))]
+pub(crate) fn publish<T, E>(
+    _object: &mut ObjectTrace,
+    _phase: ObjectPhase,
+    step: impl FnOnce() -> Result<T, E>,
+) -> Result<T, E> {
+    step()
+}
+
+/// The trace clock reading at which an inbound object became readable.
+///
+/// Outbound copies start their delivery wait here. Only traced builds record
+/// the instant, so untraced ones never read the clock on the per-object path.
+#[cfg(feature = "trace")]
+pub(crate) fn readable_ns() -> u64 {
+    now_ns()
+}
 
 /// Allocate a process-unique identity for one group of ingested objects.
 ///
