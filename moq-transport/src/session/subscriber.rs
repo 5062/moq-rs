@@ -19,7 +19,7 @@ use crate::{
     serve::{self, FullTrackName, ServeError},
 };
 
-use crate::trace;
+use crate::trace::{self, FinishOnError as _};
 use crate::watch::Queue;
 
 use super::{
@@ -1364,7 +1364,8 @@ impl Subscriber {
                             current_object_id,
                         ))
                     })
-                    .await?;
+                    .await
+                    .finish_on_error(&mut object)?;
             previous_object_id = Some(current_object_id);
 
             let extension_headers = decoded_object.as_ref().map(|o| o.extension_headers.clone());
@@ -1424,12 +1425,15 @@ impl Subscriber {
 
             // Write the object payload.
             // TODO SLG - object_id_delta and object status are still being ignored
-            let subgroup_writer = subgroup_writer.as_mut().ok_or(SessionError::Internal)?;
+            let subgroup_writer = subgroup_writer
+                .as_mut()
+                .ok_or(SessionError::Internal)
+                .finish_on_error(&mut object)?;
             // Publishing the object to the subgroup wakes its subscribers.
-            let mut object_writer =
-                trace::publish(&mut object, trace::ObjectPhase::Create, || {
-                    subgroup_writer.create_traced(remaining_bytes, extension_headers, logical_id)
-                })?;
+            let mut object_writer = trace::publish(&mut object, trace::ObjectPhase::Create, || {
+                subgroup_writer.create_traced(remaining_bytes, extension_headers, logical_id)
+            })
+            .finish_on_error(&mut object)?;
 
             while remaining_bytes > 0 {
                 // Only the polls that hand over bytes count; waiting for them does not.
@@ -1444,13 +1448,15 @@ impl Subscriber {
                             SessionError::WrongSize
                         })
                     })
-                    .await?;
+                    .await
+                    .finish_on_error(&mut object)?;
                 remaining_bytes -= chunk.len();
 
                 // Writing a chunk wakes readers streaming the object.
                 trace::publish(&mut object, trace::ObjectPhase::FrameCommit, || {
                     object_writer.write(chunk)
-                })?;
+                })
+                .finish_on_error(&mut object)?;
             }
 
             // An object reader sees the end of the object only when its writer

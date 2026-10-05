@@ -13,7 +13,7 @@ use crate::data::DataStreamResetCode;
 use crate::message::RequestErrorCode;
 use crate::mlog;
 use crate::serve::{ServeError, TrackReaderMode};
-use crate::trace;
+use crate::trace::{self, FinishOnError as _};
 use crate::watch::State;
 use crate::{data, message, serve};
 
@@ -765,11 +765,14 @@ impl ObjectForwarder {
             // here truncated the object.
             state
                 .lock_mut()
-                .ok_or(ServeError::Done)?
-                .update_largest_location(
-                    subgroup_reader.group_id,
-                    subgroup_object_reader.object_id,
-                )?;
+                .ok_or(ServeError::Done)
+                .and_then(|mut state| {
+                    state.update_largest_location(
+                        subgroup_reader.group_id,
+                        subgroup_object_reader.object_id,
+                    )
+                })
+                .finish_on_error(&mut object)?;
 
             // Flow control can block the header write, so only the polls that
             // encode count, and the time between them is a blocked write.
@@ -779,7 +782,8 @@ impl ObjectForwarder {
                     trace::ObjectPhase::WriteBlocked,
                     output.encode(&subgroup_object),
                 )
-                .await?;
+                .await
+                .finish_on_error(&mut object)?;
             // From here until the payload is fully written we are mid-object and
             // must not FIN.
             output.begin_object(subgroup_object.payload_length);
@@ -803,7 +807,11 @@ impl ObjectForwarder {
 
             let mut chunks_sent = 0;
             let mut bytes_sent = 0;
-            while let Some(chunk) = subgroup_object_reader.read().await? {
+            while let Some(chunk) = subgroup_object_reader
+                .read()
+                .await
+                .finish_on_error(&mut object)?
+            {
                 tracing::trace!(
                     "[PUBLISHER] serve_subgroup: sending payload chunk #{} for object #{} ({} bytes)",
                     chunks_sent + 1,
@@ -818,7 +826,8 @@ impl ObjectForwarder {
                         trace::ObjectPhase::WriteBlocked,
                         output.write(&chunk),
                     )
-                    .await?;
+                    .await
+                    .finish_on_error(&mut object)?;
                 chunks_sent += 1;
             }
 
@@ -841,7 +850,7 @@ impl ObjectForwarder {
                     sent = bytes_sent,
                     "upstream object ended short of its declared payload length"
                 );
-                return Err(ServeError::Size.into());
+                return Err(ServeError::Size.into()).finish_on_error(&mut object);
             }
 
             object.set_stream_offset_end(output.stream_offset());

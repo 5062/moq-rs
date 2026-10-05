@@ -91,3 +91,76 @@ pub(crate) fn next_group_instance() -> u64 {
         0
     }
 }
+
+/// How an object ended, given the session error that stopped it.
+///
+/// A read or write error on the stream itself means the peer stopped or reset
+/// it, or it was already closed, and a subscription that ended under the copy
+/// stops it too, so both end the object as reset. Every other error is a
+/// failure. This relay has no cache eviction or delivery deadline, so it never
+/// ends an object as dropped or expired.
+pub(crate) fn outcome_of(err: &crate::session::SessionError) -> ObjectOutcome {
+    use crate::session::SessionError;
+    match err {
+        SessionError::WebTransport(
+            web_transport::Error::Write(_) | web_transport::Error::Read(_),
+        ) => ObjectOutcome::Reset,
+        SessionError::Serve(err) => serve_outcome_of(err),
+        _ => ObjectOutcome::Failed,
+    }
+}
+
+/// How an object ended, given the serve error that stopped it.
+pub(crate) fn serve_outcome_of(err: &crate::serve::ServeError) -> ObjectOutcome {
+    use crate::serve::ServeError;
+    match err {
+        ServeError::Cancel | ServeError::Closed(_) | ServeError::Done => ObjectOutcome::Reset,
+        _ => ObjectOutcome::Failed,
+    }
+}
+
+/// Ends an object with the outcome of the error that stopped it.
+pub(crate) trait FinishOnError {
+    /// Finish `object` from the error, if there is one, then hand the result back.
+    ///
+    /// Write it as `step.await.finish_on_error(&mut object)?`, so an object an
+    /// early return leaves behind records why it ended instead of being abandoned.
+    fn finish_on_error(self, object: &mut ObjectTrace) -> Self;
+}
+
+impl<T> FinishOnError for Result<T, crate::session::SessionError> {
+    fn finish_on_error(self, object: &mut ObjectTrace) -> Self {
+        if let Err(err) = &self {
+            std::mem::replace(object, ObjectTrace::disabled()).finish(outcome_of(err));
+        }
+        self
+    }
+}
+
+impl<T> FinishOnError for Result<T, crate::serve::ServeError> {
+    fn finish_on_error(self, object: &mut ObjectTrace) -> Self {
+        if let Err(err) = &self {
+            std::mem::replace(object, ObjectTrace::disabled()).finish(serve_outcome_of(err));
+        }
+        self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::serve::ServeError;
+    use crate::session::SessionError;
+
+    #[test]
+    fn errors_map_to_the_outcome_that_describes_them() {
+        assert_eq!(serve_outcome_of(&ServeError::Cancel), ObjectOutcome::Reset);
+        assert_eq!(serve_outcome_of(&ServeError::Done), ObjectOutcome::Reset);
+        assert_eq!(serve_outcome_of(&ServeError::Size), ObjectOutcome::Failed);
+        assert_eq!(
+            outcome_of(&SessionError::Serve(ServeError::Closed(3))),
+            ObjectOutcome::Reset
+        );
+        assert_eq!(outcome_of(&SessionError::WrongSize), ObjectOutcome::Failed);
+    }
+}
