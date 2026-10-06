@@ -9,8 +9,8 @@
 //! keeps this crate on the real API rather than a stand-in that could drift.
 
 pub(crate) use moq_trace::{
-    global, now_ns, transport_call, Direction, Handle, LogicalId, ObjectContext, ObjectIdentity,
-    ObjectOutcome, ObjectPhase, ObjectTrace,
+    global, next_session_id, now_ns, transport_call, Direction, Handle, LogicalId, ObjectContext,
+    ObjectIdentity, ObjectOutcome, ObjectPhase, ObjectTrace,
 };
 
 /// Run a step that makes received data readable in the relay model.
