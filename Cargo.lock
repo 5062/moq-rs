@@ -1183,7 +1183,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c2a198fb6b0eada2a8df47933734e6d35d350665a33a3593d7164fa52c75c19"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -1468,7 +1468,7 @@ dependencies = [
 [[package]]
 name = "moq-trace"
 version = "0.1.0"
-source = "git+https://github.com/5062/moq-trace?branch=main#4107006c38ce576caefc10c70bbc89bc302e02f4"
+source = "git+https://github.com/5062/moq-trace?branch=main#891fbb2a8411c6d2a518def0817c909706a539ac"
 dependencies = [
  "moq-trace-lttng-sys",
  "quic-trace",
@@ -1478,7 +1478,7 @@ dependencies = [
 [[package]]
 name = "moq-trace-lttng-sys"
 version = "0.1.0"
-source = "git+https://github.com/5062/moq-trace?branch=main#4107006c38ce576caefc10c70bbc89bc302e02f4"
+source = "git+https://github.com/5062/moq-trace?branch=main#891fbb2a8411c6d2a518def0817c909706a539ac"
 dependencies = [
  "trace-provider-build",
 ]
@@ -1764,7 +1764,7 @@ dependencies = [
 [[package]]
 name = "quic-trace"
 version = "0.1.0"
-source = "git+https://github.com/5062/moq-trace?branch=main#4107006c38ce576caefc10c70bbc89bc302e02f4"
+source = "git+https://github.com/5062/moq-trace?branch=main#891fbb2a8411c6d2a518def0817c909706a539ac"
 dependencies = [
  "quic-trace-lttng-sys",
  "trace-core",
@@ -1773,7 +1773,7 @@ dependencies = [
 [[package]]
 name = "quic-trace-lttng-sys"
 version = "0.1.0"
-source = "git+https://github.com/5062/moq-trace?branch=main#4107006c38ce576caefc10c70bbc89bc302e02f4"
+source = "git+https://github.com/5062/moq-trace?branch=main#891fbb2a8411c6d2a518def0817c909706a539ac"
 dependencies = [
  "trace-provider-build",
 ]
@@ -2847,16 +2847,15 @@ checksum = "b6bc1c9ce2b5135ac7f93c72918fc37feb872bdc6a5533a8b85eb4b86bfdae52"
 [[package]]
 name = "trace-core"
 version = "0.1.0"
-source = "git+https://github.com/5062/moq-trace?branch=main#4107006c38ce576caefc10c70bbc89bc302e02f4"
+source = "git+https://github.com/5062/moq-trace?branch=main#891fbb2a8411c6d2a518def0817c909706a539ac"
 dependencies = [
- "libc",
  "quic-trace-lttng-sys",
 ]
 
 [[package]]
 name = "trace-provider-build"
 version = "0.1.0"
-source = "git+https://github.com/5062/moq-trace?branch=main#4107006c38ce576caefc10c70bbc89bc302e02f4"
+source = "git+https://github.com/5062/moq-trace?branch=main#891fbb2a8411c6d2a518def0817c909706a539ac"
 dependencies = [
  "bindgen 0.73.2",
  "cc",
