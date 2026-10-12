@@ -98,7 +98,7 @@ workspace `[patch]` entries still apply to every build, traced or not:
 - `moq-trace` resolves from the toolkit's git repository, pinned by
   `Cargo.lock`. Cargo fetches it even when no feature enables it. To build
   against a local toolkit checkout instead, pass
-  `--config 'patch.crates-io.moq-trace.path="../moq-trace2/crates/moq-trace"'`.
+  `--config 'patch.crates-io.moq-trace.path="../moq-trace/crates/moq-trace"'`.
   That rewrites `Cargo.lock` to the local path, so restore it before committing.
 - Quinn and web-transport resolve from the instrumented forks. Their hooks are
   always compiled and emit only when `moq-trace/lttng` is enabled, which the
