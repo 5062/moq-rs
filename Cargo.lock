@@ -1183,7 +1183,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c2a198fb6b0eada2a8df47933734e6d35d350665a33a3593d7164fa52c75c19"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -1468,7 +1468,7 @@ dependencies = [
 [[package]]
 name = "moq-trace"
 version = "0.1.0"
-source = "git+https://github.com/5062/moq-trace?branch=main#778f2b8d0dab63cb3cc2dc13b41aa28efe677a31"
+source = "git+https://github.com/5062/moq-trace?branch=main#15c7f22f83d23cf22f0fbd9fab6199469e925217"
 dependencies = [
  "moq-trace-lttng-sys",
  "quic-trace",
@@ -1478,7 +1478,7 @@ dependencies = [
 [[package]]
 name = "moq-trace-lttng-sys"
 version = "0.1.0"
-source = "git+https://github.com/5062/moq-trace?branch=main#778f2b8d0dab63cb3cc2dc13b41aa28efe677a31"
+source = "git+https://github.com/5062/moq-trace?branch=main#15c7f22f83d23cf22f0fbd9fab6199469e925217"
 dependencies = [
  "trace-provider-build",
 ]
@@ -1764,7 +1764,7 @@ dependencies = [
 [[package]]
 name = "quic-trace"
 version = "0.1.0"
-source = "git+https://github.com/5062/moq-trace?branch=main#778f2b8d0dab63cb3cc2dc13b41aa28efe677a31"
+source = "git+https://github.com/5062/moq-trace?branch=main#15c7f22f83d23cf22f0fbd9fab6199469e925217"
 dependencies = [
  "quic-trace-lttng-sys",
  "trace-core",
@@ -1773,7 +1773,7 @@ dependencies = [
 [[package]]
 name = "quic-trace-lttng-sys"
 version = "0.1.0"
-source = "git+https://github.com/5062/moq-trace?branch=main#778f2b8d0dab63cb3cc2dc13b41aa28efe677a31"
+source = "git+https://github.com/5062/moq-trace?branch=main#15c7f22f83d23cf22f0fbd9fab6199469e925217"
 dependencies = [
  "trace-provider-build",
 ]
@@ -1781,17 +1781,17 @@ dependencies = [
 [[package]]
 name = "quinn"
 version = "0.11.11"
-source = "git+https://github.com/5062/quinn?branch=moq-trace%2Fquinn-0.11#76c4d143906186dc790c00a0df5582ae26592f36"
+source = "git+https://github.com/5062/quinn?branch=moq-trace%2Fquinn-0.11#04bdddabd8fe91e049d5334fdb7597604255d9d9"
 dependencies = [
  "bytes",
  "cfg_aliases",
- "moq-trace",
  "pin-project-lite",
+ "quic-trace",
  "quinn-proto",
  "quinn-udp",
  "rustc-hash 2.1.3",
  "rustls 0.23.31",
- "socket2 0.6.0",
+ "socket2 0.5.7",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
@@ -1801,15 +1801,15 @@ dependencies = [
 [[package]]
 name = "quinn-proto"
 version = "0.11.16"
-source = "git+https://github.com/5062/quinn?branch=moq-trace%2Fquinn-0.11#76c4d143906186dc790c00a0df5582ae26592f36"
+source = "git+https://github.com/5062/quinn?branch=moq-trace%2Fquinn-0.11#04bdddabd8fe91e049d5334fdb7597604255d9d9"
 dependencies = [
  "aws-lc-rs",
  "bytes",
  "fastbloom",
  "getrandom 0.4.3",
  "lru-slab",
- "moq-trace",
  "qlog",
+ "quic-trace",
  "rand 0.10.2",
  "rand_pcg",
  "ring",
@@ -1827,13 +1827,13 @@ dependencies = [
 [[package]]
 name = "quinn-udp"
 version = "0.5.15"
-source = "git+https://github.com/5062/quinn?branch=moq-trace%2Fquinn-0.11#76c4d143906186dc790c00a0df5582ae26592f36"
+source = "git+https://github.com/5062/quinn?branch=moq-trace%2Fquinn-0.11#04bdddabd8fe91e049d5334fdb7597604255d9d9"
 dependencies = [
  "cfg_aliases",
  "libc",
- "moq-trace",
  "once_cell",
- "socket2 0.6.0",
+ "quic-trace",
+ "socket2 0.5.7",
  "tracing",
  "windows-sys 0.61.2",
 ]
@@ -2847,7 +2847,7 @@ checksum = "b6bc1c9ce2b5135ac7f93c72918fc37feb872bdc6a5533a8b85eb4b86bfdae52"
 [[package]]
 name = "trace-core"
 version = "0.1.0"
-source = "git+https://github.com/5062/moq-trace?branch=main#778f2b8d0dab63cb3cc2dc13b41aa28efe677a31"
+source = "git+https://github.com/5062/moq-trace?branch=main#15c7f22f83d23cf22f0fbd9fab6199469e925217"
 dependencies = [
  "quic-trace-lttng-sys",
 ]
@@ -2855,7 +2855,7 @@ dependencies = [
 [[package]]
 name = "trace-provider-build"
 version = "0.1.0"
-source = "git+https://github.com/5062/moq-trace?branch=main#778f2b8d0dab63cb3cc2dc13b41aa28efe677a31"
+source = "git+https://github.com/5062/moq-trace?branch=main#15c7f22f83d23cf22f0fbd9fab6199469e925217"
 dependencies = [
  "bindgen 0.73.2",
  "cc",
@@ -3133,7 +3133,7 @@ dependencies = [
 [[package]]
 name = "web-transport"
 version = "0.10.8"
-source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#bf84a684d69ea255d315cc62eac5dce02600d830"
+source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#eea76bc39afacc65364dc3cd258d0b7bd98836f7"
 dependencies = [
  "bytes",
  "thiserror 2.0.17",
@@ -3146,7 +3146,7 @@ dependencies = [
 [[package]]
 name = "web-transport-proto"
 version = "0.6.1"
-source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#bf84a684d69ea255d315cc62eac5dce02600d830"
+source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#eea76bc39afacc65364dc3cd258d0b7bd98836f7"
 dependencies = [
  "bytes",
  "http",
@@ -3159,7 +3159,7 @@ dependencies = [
 [[package]]
 name = "web-transport-quinn"
 version = "0.11.11"
-source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#bf84a684d69ea255d315cc62eac5dce02600d830"
+source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#eea76bc39afacc65364dc3cd258d0b7bd98836f7"
 dependencies = [
  "bytes",
  "futures",
@@ -3178,7 +3178,7 @@ dependencies = [
 [[package]]
 name = "web-transport-trait"
 version = "0.3.7"
-source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#bf84a684d69ea255d315cc62eac5dce02600d830"
+source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#eea76bc39afacc65364dc3cd258d0b7bd98836f7"
 dependencies = [
  "bytes",
 ]
@@ -3186,7 +3186,7 @@ dependencies = [
 [[package]]
 name = "web-transport-wasm"
 version = "0.5.9"
-source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#bf84a684d69ea255d315cc62eac5dce02600d830"
+source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#eea76bc39afacc65364dc3cd258d0b7bd98836f7"
 dependencies = [
  "bytes",
  "js-sys",
