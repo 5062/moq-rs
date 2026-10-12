@@ -1433,7 +1433,7 @@ impl Subscriber {
                 .ok_or(SessionError::Internal)
                 .finish_on_error(&mut object)?;
             // Publishing the object to the subgroup wakes its subscribers.
-            let mut object_writer = trace::publish(&mut object, trace::ObjectPhase::Create, || {
+            let mut object_writer = object.publish(trace::ObjectPhase::Create, || {
                 subgroup_writer.create_traced(remaining_bytes, extension_headers, logical_id)
             })
             .finish_on_error(&mut object)?;
@@ -1457,7 +1457,7 @@ impl Subscriber {
                 remaining_bytes -= chunk.len();
 
                 // Writing a chunk wakes readers streaming the object.
-                trace::publish(&mut object, trace::ObjectPhase::FrameCommit, || {
+                object.publish(trace::ObjectPhase::FrameCommit, || {
                     object_writer.write(chunk)
                 })
                 .finish_on_error(&mut object)?;
@@ -1465,7 +1465,7 @@ impl Subscriber {
 
             // An object reader sees the end of the object only when its writer
             // drops, so completion is commit work and gets a final phase.
-            trace::publish(&mut object, trace::ObjectPhase::FrameCommit, || {
+            object.publish(trace::ObjectPhase::FrameCommit, || {
                 drop(object_writer);
                 Ok::<_, std::convert::Infallible>(())
             })

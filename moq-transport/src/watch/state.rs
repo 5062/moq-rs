@@ -35,13 +35,12 @@ impl<T> StateInner<T> {
 
     pub fn notify(&mut self) {
         self.epoch += 1;
+        // Times the wakes for the object a traced relay is publishing on this thread.
         #[cfg(feature = "trace")]
-        let probe = super::probe::start();
+        let _wake = moq_trace::Wake::begin();
         for waker in self.wakers.drain(..) {
             waker.wake();
         }
-        #[cfg(feature = "trace")]
-        super::probe::finish(probe);
     }
 }
 
