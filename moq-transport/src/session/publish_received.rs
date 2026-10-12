@@ -398,7 +398,7 @@ mod tests {
             rid,
             crate::session::PendingRequests::default(),
             SessionId::generate(),
-            crate::trace::global(),
+            crate::trace::Handle::disabled(),
         );
         let (writer, reader) =
             Track::new(TrackNamespace::from_utf8_path("test"), "0.mp4").produce();

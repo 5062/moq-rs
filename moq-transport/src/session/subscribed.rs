@@ -697,23 +697,30 @@ impl ObjectForwarder {
                 }
             };
 
-            let mut context = trace::ObjectContext::new(
-                trace::Direction::Tx,
-                trace::ObjectIdentity::new(
-                    header.track_alias,
-                    subgroup_reader.group_id,
-                    subgroup_object_reader.object_id,
-                ),
-                // Read back the identity the inbound trace chose. The model's
-                // object ID is a separate counter and need not match it.
-                subgroup_object_reader.logical_id(),
-            )
-            .with_payload_bytes(subgroup_object_reader.size as u64)
-            .with_stream_offset_start(output.stream_offset());
-            if let Some(stream_id) = output.stream_id() {
-                context = context.with_stream_id(stream_id);
-            }
-            let mut object = trace.object(context);
+            // Read back the identity the inbound trace chose. The model's object
+            // ID is a separate counter and need not match it. An object no traced
+            // inbound stream created has none, and its copy is not traced, because
+            // every outbound copy must pair with exactly one inbound lifecycle.
+            let mut object = match subgroup_object_reader.logical_id() {
+                Some(logical_id) => {
+                    let mut context = trace::ObjectContext::new(
+                        trace::Direction::Tx,
+                        trace::ObjectIdentity::new(
+                            header.track_alias,
+                            subgroup_reader.group_id,
+                            subgroup_object_reader.object_id,
+                        ),
+                        logical_id,
+                    )
+                    .with_payload_bytes(subgroup_object_reader.size as u64)
+                    .with_stream_offset_start(output.stream_offset());
+                    if let Some(stream_id) = output.stream_id() {
+                        context = context.with_stream_id(stream_id);
+                    }
+                    trace.object(context)
+                }
+                None => trace::ObjectTrace::disabled(),
+            };
             // The copy waited from the instant the inbound object became readable
             // until now, where its clone starts.
             let clone = match subgroup_object_reader
@@ -784,6 +791,7 @@ impl ObjectForwarder {
                 )
                 .await
                 .finish_on_error(&mut object)?;
+            object.set_stream_offset_end(output.stream_offset());
             // From here until the payload is fully written we are mid-object and
             // must not FIN.
             output.begin_object(subgroup_object.payload_length);
@@ -828,6 +836,7 @@ impl ObjectForwarder {
                     )
                     .await
                     .finish_on_error(&mut object)?;
+                object.set_stream_offset_end(output.stream_offset());
                 chunks_sent += 1;
             }
 
@@ -853,7 +862,6 @@ impl ObjectForwarder {
                 return Err(ServeError::Size.into()).finish_on_error(&mut object);
             }
 
-            object.set_stream_offset_end(output.stream_offset());
             object.finish(trace::ObjectOutcome::Success);
             object_count += 1;
         }
@@ -915,7 +923,7 @@ impl ObjectForwarder {
             state,
             None,
             delivery_filter,
-            &trace::global(),
+            &trace::Handle::disabled(),
         )
         .await;
 

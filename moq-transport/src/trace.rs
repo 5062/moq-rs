@@ -9,8 +9,8 @@
 //! keeps this crate on the real API rather than a stand-in that could drift.
 
 pub(crate) use moq_trace::{
-    global, next_session_id, now_ns, transport_call, Direction, Handle, LogicalId, ObjectContext,
-    ObjectIdentity, ObjectOutcome, ObjectPhase, ObjectTrace,
+    now_ns, transport_call, Direction, Handle, LogicalId, ObjectContext, ObjectIdentity,
+    ObjectOutcome, ObjectPhase, ObjectTrace,
 };
 
 /// Run a step that makes received data readable in the relay model.
@@ -61,16 +61,30 @@ pub(crate) fn publish<T, E>(
     step()
 }
 
-/// The trace clock reading at which an inbound object became readable.
+/// Return the handle a session records object events through.
 ///
-/// Outbound copies start their delivery wait here. Only traced builds record
-/// the instant, so untraced ones never read the clock on the per-object path.
+/// Object identity and stream offsets are compiled only with this crate's `trace`
+/// feature, but emission follows `moq-trace/lttng`, which another crate in the
+/// build can turn on alone. Without `trace` a session therefore gets a disabled
+/// handle, so it never emits objects that lack the logical identity and stream
+/// position the analysis joins on. This crate's feature is the one switch.
 #[cfg(feature = "trace")]
-pub(crate) fn readable_ns() -> u64 {
-    now_ns()
+pub(crate) fn session_handle(session: &web_transport::Session) -> Handle {
+    let handle = moq_trace::global().with_session_id(moq_trace::next_session_id());
+    // The transport connection identity is what ties an object to the packets
+    // that carried it, so tag it when the transport reports one.
+    match session.connection_id() {
+        Some(connection_id) => handle.with_connection_id(connection_id.into_inner()),
+        None => handle,
+    }
 }
 
-/// Allocate a process-unique identity for one group of ingested objects.
+#[cfg(not(feature = "trace"))]
+pub(crate) fn session_handle(_session: &web_transport::Session) -> Handle {
+    Handle::disabled()
+}
+
+/// Allocate a process-unique logical group for one group of ingested objects.
 ///
 /// Wire fields cannot identify a logical object across the relay: the track
 /// alias is scoped to a session, so the alias an object arrives under differs
@@ -81,7 +95,7 @@ pub(crate) fn readable_ns() -> u64 {
 ///
 /// Without the `trace` feature nothing reads the identity, so this skips the
 /// shared counter on the per-object path.
-pub(crate) fn next_group_instance() -> u64 {
+pub(crate) fn next_logical_group() -> u64 {
     #[cfg(feature = "trace")]
     {
         moq_trace::next_logical_group()

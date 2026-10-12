@@ -1260,7 +1260,7 @@ impl Subscriber {
 
         // One identity per ingested group, allocated before the first header is
         // read so the inbound trace covers the header parse.
-        let trace_group = trace::next_group_instance();
+        let logical_group = trace::next_logical_group();
 
         let mut object_count = 0;
         let mut previous_object_id: Option<u64> = None;
@@ -1275,7 +1275,7 @@ impl Subscriber {
             // wire ID: a subgroup can start above zero or skip IDs. The model
             // stores the identity on the object, so outbound copies reuse it
             // instead of deriving their own.
-            let logical_id = trace::LogicalId::new(trace_group, object_count);
+            let logical_id = trace::LogicalId::new(logical_group, object_count);
             let mut context = trace::ObjectContext::new(
                 trace::Direction::Rx,
                 trace::ObjectIdentity::new(
@@ -1371,6 +1371,7 @@ impl Subscriber {
             let extension_headers = decoded_object.as_ref().map(|o| o.extension_headers.clone());
 
             object.set_payload_bytes(remaining_bytes as u64);
+            object.set_stream_offset_end(reader.offset());
 
             // Non-normal status with extension headers is a protocol violation.
             if status.is_some_and(|s| s != data::ObjectStatus::NormalObject)
@@ -1378,7 +1379,8 @@ impl Subscriber {
             {
                 return Err(SessionError::ProtocolViolation(
                     "non-normal object status with extension headers".to_string(),
-                ));
+                ))
+                .finish_on_error(&mut object);
             }
 
             // Open the subgroup writer on the first object.
@@ -1386,7 +1388,8 @@ impl Subscriber {
                 if stream_header_type.uses_first_object_id_as_subgroup_id() {
                     subgroup_header.subgroup_id = Some(current_object_id);
                 }
-                subgroup_writer = Some(get_writer(subgroup_header.clone())?);
+                subgroup_writer =
+                    Some(get_writer(subgroup_header.clone()).finish_on_error(&mut object)?);
             }
 
             // Log the object.
@@ -1450,6 +1453,7 @@ impl Subscriber {
                     })
                     .await
                     .finish_on_error(&mut object)?;
+                object.set_stream_offset_end(reader.offset());
                 remaining_bytes -= chunk.len();
 
                 // Writing a chunk wakes readers streaming the object.
@@ -1467,7 +1471,6 @@ impl Subscriber {
             })
             .unwrap_or_else(|never| match never {});
 
-            object.set_stream_offset_end(reader.offset());
             object.finish(trace::ObjectOutcome::Success);
             object_count += 1;
         }
@@ -1653,7 +1656,7 @@ mod tests {
             request_id,
             PendingRequests::default(),
             SessionId::generate(),
-            crate::trace::global(),
+            crate::trace::Handle::disabled(),
         )
     }
 

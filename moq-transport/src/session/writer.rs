@@ -65,6 +65,16 @@ impl Writer {
         }
     }
 
+    /// Count bytes the transport accepted, as soon as it accepts them, so the
+    /// offset stays exact even when a later write in the same call fails.
+    #[cfg_attr(not(feature = "trace"), allow(unused_variables))]
+    fn advance(&mut self, amount: usize) {
+        #[cfg(feature = "trace")]
+        {
+            self.offset += amount as u64;
+        }
+    }
+
     pub async fn encode<T: Encode>(&mut self, msg: &T) -> Result<(), SessionError> {
         self.buffer.clear();
         tracing::trace!(
@@ -84,6 +94,7 @@ impl Writer {
         while !self.buffer.is_empty() {
             let written = trace::transport_call(self.stream.write_buf(&mut self.buffer)).await?;
             total_written += written;
+            self.advance(written);
             tracing::trace!(
                 "[WRITER] encode: wrote {} bytes to stream (total={}/{}, remaining={})",
                 written,
@@ -99,10 +110,6 @@ impl Writer {
             total_written
         );
 
-        #[cfg(feature = "trace")]
-        {
-            self.offset += total_written as u64;
-        }
         Ok(())
     }
 
@@ -124,6 +131,7 @@ impl Writer {
                 return Err(EncodeError::More(cursor.remaining()).into());
             }
             total_written += size;
+            self.advance(size);
             tracing::trace!(
                 "[WRITER] write: wrote {} bytes (total={}/{}, remaining={})",
                 size,
@@ -135,10 +143,6 @@ impl Writer {
 
         tracing::trace!("[WRITER] write: finished writing {} bytes", total_written);
 
-        #[cfg(feature = "trace")]
-        {
-            self.offset += total_written as u64;
-        }
         Ok(())
     }
 

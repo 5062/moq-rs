@@ -583,13 +583,7 @@ impl Session {
 
         // One handle per session, so object events from both halves share a
         // session ID and can be told apart within the process.
-        let trace = crate::trace::global().with_session_id(crate::trace::next_session_id());
-        // The transport connection identity is what ties an object to the
-        // packets that carried it, so tag it when the transport reports one.
-        let trace = match webtransport.connection_id() {
-            Some(connection_id) => trace.with_connection_id(connection_id.into_inner()),
-            None => trace,
-        };
+        let trace = crate::trace::session_handle(&webtransport);
 
         // Wrap mlog in Arc<Mutex<>> for sharing across tasks
         let mlog_shared = mlog.map(|m| Arc::new(Mutex::new(m)));

@@ -318,11 +318,9 @@ impl SubgroupWriter {
         size: usize,
         extension_headers: Option<crate::data::ExtensionHeaders>,
     ) -> Result<SubgroupObjectWriter, ServeError> {
-        // Objects created outside an inbound stream still need an identity of
-        // their own, so give each its own group instance.
-        let logical_id =
-            crate::trace::LogicalId::new(crate::trace::next_group_instance(), self.next_object_id);
-        self.create_traced(size, extension_headers, logical_id)
+        // An object created outside a traced inbound stream has no inbound
+        // lifecycle to pair with, so its outbound copies are not traced.
+        self.create_object(size, extension_headers, None)
     }
 
     /// Create an object whose logical identity the receiving side chose.
@@ -331,12 +329,21 @@ impl SubgroupWriter {
     /// picks the identity then and hands it here. Every outbound copy reads the
     /// identity back from the object rather than deriving it again, because a
     /// second derivation from other counters can disagree with the first.
-    #[cfg_attr(not(feature = "trace"), allow(unused_variables))]
     pub(crate) fn create_traced(
         &mut self,
         size: usize,
         extension_headers: Option<crate::data::ExtensionHeaders>,
         logical_id: crate::trace::LogicalId,
+    ) -> Result<SubgroupObjectWriter, ServeError> {
+        self.create_object(size, extension_headers, Some(logical_id))
+    }
+
+    #[cfg_attr(not(feature = "trace"), allow(unused_variables))]
+    fn create_object(
+        &mut self,
+        size: usize,
+        extension_headers: Option<crate::data::ExtensionHeaders>,
+        logical_id: Option<crate::trace::LogicalId>,
     ) -> Result<SubgroupObjectWriter, ServeError> {
         let (writer, reader) = SubgroupObject {
             group: self.info.clone(),
@@ -348,8 +355,9 @@ impl SubgroupWriter {
             logical_id,
             // Taken just before the object is published below. The object is
             // immutable once shared, so the instant cannot be taken any later.
+            // Only a traced object reads the clock.
             #[cfg(feature = "trace")]
-            ready_ns: crate::trace::readable_ns(),
+            ready_ns: logical_id.map(|_| crate::trace::now_ns()),
         }
         .produce();
 
@@ -474,14 +482,15 @@ pub struct SubgroupObject {
     pub object_id: u64,
 
     // Logical identity the inbound trace recorded. An outbound copy carries the
-    // same value, which is what pairs the two traces.
+    // same value, which is what pairs the two traces. Unset for an object that
+    // no traced inbound stream created.
     #[cfg(feature = "trace")]
-    pub(crate) logical_id: crate::trace::LogicalId,
+    pub(crate) logical_id: Option<crate::trace::LogicalId>,
 
     // When the object became readable to subscribers, on the trace clock. An
-    // outbound copy's delivery wait starts here.
+    // outbound copy's delivery wait starts here. Set only with `logical_id`.
     #[cfg(feature = "trace")]
-    pub(crate) ready_ns: u64,
+    pub(crate) ready_ns: Option<u64>,
 
     // The size of the object.
     pub size: usize,
@@ -497,25 +506,27 @@ impl SubgroupObject {
     /// Logical identity the inbound trace recorded for this object.
     ///
     /// Outbound copies carry the same value as the object they were read from,
-    /// which is what lets an outbound trace be paired with its inbound one.
-    pub(crate) fn logical_id(&self) -> crate::trace::LogicalId {
+    /// which is what lets an outbound trace be paired with its inbound one. An
+    /// object no traced inbound stream created has none, and neither does any
+    /// object without the `trace` feature.
+    pub(crate) fn logical_id(&self) -> Option<crate::trace::LogicalId> {
         #[cfg(feature = "trace")]
         {
             self.logical_id
         }
         #[cfg(not(feature = "trace"))]
         {
-            crate::trace::LogicalId::new(0, 0)
+            None
         }
     }
 
     /// When the object became readable to subscribers, on the trace clock.
     ///
-    /// Without the `trace` feature no instant is recorded.
+    /// Only an object with a logical identity records the instant.
     pub(crate) fn ready_ns(&self) -> Option<u64> {
         #[cfg(feature = "trace")]
         {
-            Some(self.ready_ns)
+            self.ready_ns
         }
         #[cfg(not(feature = "trace"))]
         {
@@ -727,21 +738,21 @@ mod tests {
         let mut traced = sg.create_traced(1, None, chosen).unwrap();
         traced.write(Bytes::from_static(b"x")).unwrap();
 
-        // A standalone object has no inbound trace to pair with, so it gets an
-        // identity of its own rather than reusing the previous group.
+        // A standalone object has no inbound trace to pair with, so it carries
+        // no identity and its outbound copies are not traced.
         sg.write(Bytes::from_static(b"y")).unwrap();
-        sg.write(Bytes::from_static(b"z")).unwrap();
         drop(sg);
 
         let sub = reader.next().await.unwrap().expect("expected a subgroup");
         let mut sub = sub.clone();
         let object = sub.next().await.unwrap().unwrap();
-        assert_eq!(object.info.logical_id(), chosen);
+        assert_eq!(object.info.logical_id(), Some(chosen));
+        assert!(object.info.ready_ns().is_some());
         assert_eq!(object.info.object_id, 0);
 
-        let first = sub.next().await.unwrap().unwrap().info.logical_id();
-        let second = sub.next().await.unwrap().unwrap().info.logical_id();
-        assert_ne!(first.group(), second.group());
+        let standalone = sub.next().await.unwrap().unwrap();
+        assert_eq!(standalone.info.logical_id(), None);
+        assert_eq!(standalone.info.ready_ns(), None);
     }
 
     // ---------------------------------------------------------------
