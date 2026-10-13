@@ -1183,7 +1183,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c2a198fb6b0eada2a8df47933734e6d35d350665a33a3593d7164fa52c75c19"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -1781,7 +1781,7 @@ dependencies = [
 [[package]]
 name = "quinn"
 version = "0.11.11"
-source = "git+https://github.com/5062/quinn?branch=moq-trace%2Fquinn-0.11#04bdddabd8fe91e049d5334fdb7597604255d9d9"
+source = "git+https://github.com/5062/quinn?branch=moq-trace%2Fquinn-0.11#a026a98e51a2def3d6556b1deca73eeb7392a9ae"
 dependencies = [
  "bytes",
  "cfg_aliases",
@@ -1791,7 +1791,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.3",
  "rustls 0.23.31",
- "socket2 0.5.7",
+ "socket2 0.6.0",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
@@ -1801,7 +1801,7 @@ dependencies = [
 [[package]]
 name = "quinn-proto"
 version = "0.11.16"
-source = "git+https://github.com/5062/quinn?branch=moq-trace%2Fquinn-0.11#04bdddabd8fe91e049d5334fdb7597604255d9d9"
+source = "git+https://github.com/5062/quinn?branch=moq-trace%2Fquinn-0.11#a026a98e51a2def3d6556b1deca73eeb7392a9ae"
 dependencies = [
  "aws-lc-rs",
  "bytes",
@@ -1827,13 +1827,13 @@ dependencies = [
 [[package]]
 name = "quinn-udp"
 version = "0.5.15"
-source = "git+https://github.com/5062/quinn?branch=moq-trace%2Fquinn-0.11#04bdddabd8fe91e049d5334fdb7597604255d9d9"
+source = "git+https://github.com/5062/quinn?branch=moq-trace%2Fquinn-0.11#a026a98e51a2def3d6556b1deca73eeb7392a9ae"
 dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
  "quic-trace",
- "socket2 0.5.7",
+ "socket2 0.6.0",
  "tracing",
  "windows-sys 0.61.2",
 ]
@@ -3133,7 +3133,7 @@ dependencies = [
 [[package]]
 name = "web-transport"
 version = "0.10.8"
-source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#eea76bc39afacc65364dc3cd258d0b7bd98836f7"
+source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#7a59593ac114405c0c2cc48b8fbbbc14362f143a"
 dependencies = [
  "bytes",
  "thiserror 2.0.17",
@@ -3146,7 +3146,7 @@ dependencies = [
 [[package]]
 name = "web-transport-proto"
 version = "0.6.1"
-source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#eea76bc39afacc65364dc3cd258d0b7bd98836f7"
+source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#7a59593ac114405c0c2cc48b8fbbbc14362f143a"
 dependencies = [
  "bytes",
  "http",
@@ -3159,7 +3159,7 @@ dependencies = [
 [[package]]
 name = "web-transport-quinn"
 version = "0.11.11"
-source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#eea76bc39afacc65364dc3cd258d0b7bd98836f7"
+source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#7a59593ac114405c0c2cc48b8fbbbc14362f143a"
 dependencies = [
  "bytes",
  "futures",
@@ -3178,7 +3178,7 @@ dependencies = [
 [[package]]
 name = "web-transport-trait"
 version = "0.3.7"
-source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#eea76bc39afacc65364dc3cd258d0b7bd98836f7"
+source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#7a59593ac114405c0c2cc48b8fbbbc14362f143a"
 dependencies = [
  "bytes",
 ]
@@ -3186,7 +3186,7 @@ dependencies = [
 [[package]]
 name = "web-transport-wasm"
 version = "0.5.9"
-source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#eea76bc39afacc65364dc3cd258d0b7bd98836f7"
+source = "git+https://github.com/5062/web-transport?branch=moq-trace%2Fweb-transport-quinn-v0.11.11#7a59593ac114405c0c2cc48b8fbbbc14362f143a"
 dependencies = [
  "bytes",
  "js-sys",

@@ -25,10 +25,12 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 moq-trace = { version = "0.1", default-features = false }
 
 # A patch applies to every build, so the default build uses the forks too. They
-# are drop-in replacements: the instrumentation they add is compiled out unless
-# the matching feature is on. The toolkit is not on crates.io yet, so its MoQ
-# facade and the transport facade the Quinn fork requires resolve from its git
-# repository; drop those lines once the toolkit ships a release. To build against a local toolkit checkout instead, override it with
+# are drop-in replacements: their hooks are always compiled and emit only when
+# moq-trace/lttng is on, which only the `trace` feature enables. The toolkit is
+# not on crates.io yet, so its MoQ facade and the transport facade the Quinn
+# fork requires resolve from its git repository; drop those lines once the
+# toolkit ships a release. To build against a local toolkit checkout instead,
+# override it with
 # `--config 'patch.crates-io.moq-trace.path="../moq-trace/crates/moq-trace"'`.
 # That rewrites Cargo.lock to the local path, so restore it before committing.
 #
