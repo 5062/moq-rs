@@ -10,7 +10,7 @@
 
 pub(crate) use moq_trace::{
     now_ns, transport_call, Direction, Handle, LogicalId, ObjectContext, ObjectIdentity,
-    ObjectOutcome, ObjectPhase, ObjectTrace,
+    ObjectOutcome, ObjectPhase, ObjectTrace, StreamSetup,
 };
 
 /// Return the handle a session records object events through.

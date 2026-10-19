@@ -579,7 +579,13 @@ impl ObjectForwarder {
             return Ok(());
         };
 
-        let mut send_stream = publisher.open_uni().await?;
+        // The first object can be readable while the stream is still being set
+        // up, so its copy records that setup as header work, not as its wait.
+        let trace = publisher.trace().clone();
+        let mut setup = trace::StreamSetup::default();
+        let mut send_stream = setup
+            .measure(&trace, trace::transport_call(publisher.open_uni()))
+            .await?;
         tracing::trace!("[PUBLISHER] serve_subgroup: opened unidirectional stream");
 
         state
@@ -600,7 +606,8 @@ impl ObjectForwarder {
             state,
             mlog,
             delivery_filter,
-            publisher.trace(),
+            &trace,
+            setup,
         )
         .await;
 
@@ -662,6 +669,7 @@ impl ObjectForwarder {
         mlog: Option<Arc<Mutex<mlog::MlogWriter>>>,
         delivery_filter: DeliveryFilter,
         trace: &trace::Handle,
+        mut setup: trace::StreamSetup,
     ) -> Result<(), SessionError> {
         tracing::trace!(
             "[PUBLISHER] serve_subgroup: sending header - track_alias={}, group_id={}, subgroup_id={:?}, priority={}, header_type={:?}",
@@ -672,7 +680,7 @@ impl ObjectForwarder {
             header.header_type
         );
 
-        output.encode(&header).await?;
+        setup.measure(trace, output.encode(&header)).await?;
 
         // Log subgroup header created/sent
         if let Some(ref mlog) = mlog {
@@ -729,9 +737,7 @@ impl ObjectForwarder {
             {
                 Some(ready_ns) => {
                     let now = trace::now_ns();
-                    object
-                        .phase_at(trace::ObjectPhase::DeliveryWait, ready_ns)
-                        .finish_at(trace::ObjectOutcome::Success, now);
+                    object.delivery_wait(ready_ns, now, (object_count == 0).then_some(&setup));
                     object.phase_at(trace::ObjectPhase::Clone, now)
                 }
                 None => object.phase(trace::ObjectPhase::Clone),
@@ -924,6 +930,7 @@ impl ObjectForwarder {
             None,
             delivery_filter,
             &trace::Handle::disabled(),
+            trace::StreamSetup::default(),
         )
         .await;
 
