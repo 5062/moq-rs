@@ -87,9 +87,11 @@ nix develop --command cargo build --release -p moq-relay-ietf --features trace
 ```
 
 It requires Linux with the lttng-ust headers installed, which the flake's dev
-shell provides along with the C toolchain and pkg-config. The capture and analysis
-tooling lives in the [moq-trace](https://github.com/5062/moq-trace) toolkit; see
-its README for the LTTng session setup and the `moq-trace analyze` step.
+shell provides along with the C toolchain and pkg-config. The
+[moq-trace](https://github.com/5062/moq-trace) toolkit owns the event providers.
+The capture and analysis tooling lives in
+[moq-workspace](https://github.com/5062/moq-workspace); see its
+`python/README.md` for capture and the `moq-trace analyze` step.
 
 The flag is off by default. Without it the LTTng provider is not built or
 linked, and the `moq-trace` handles the relay calls are disabled no-ops. Two
