@@ -1368,6 +1368,7 @@ dependencies = [
  "clap",
  "futures",
  "hex",
+ "moq-trace",
  "moq-transport",
  "quinn",
  "rand 0.8.5",

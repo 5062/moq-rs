@@ -452,9 +452,18 @@ impl Server {
             let file = File::create(&qlog_path).context("failed to create qlog file")?;
             let writer = BufWriter::new(file);
 
+            // qlog event times are relative to the start instant, so the title
+            // records it on the moq-trace clock for moq-trace to place the events.
+            // Quinn 0.11 writes RTT in seconds rather than milliseconds.
+            // Read both clocks back to back so the recorded start matches.
+            let start_ns = moq_trace::now_ns();
+            let start = time::Instant::now();
             let mut qlog = quinn::QlogConfig::default();
             qlog.writer(Box::new(writer))
-                .title(Some("moq-relay".into()));
+                .title(Some(format!(
+                    "moq-relay monotonic_start_ns={start_ns} rtt_unit=s"
+                )))
+                .start_time(start);
             transport.qlog_stream(qlog.into_stream());
 
             // Create custom server config with qlog-enabled transport
