@@ -40,7 +40,12 @@
                 pkg-config
                 rustPlatform.bindgenHook
               ]
-              ++ lib.optionals stdenv.hostPlatform.isLinux [ lttng-ust ];
+              ++ lib.optionals stdenv.hostPlatform.isLinux [
+                lttng-ust
+                # moq-workspace's DPDK relay build compiles the Quinn fork's
+                # DPDK socket against it (`QUINN_BUILD_DPDK=1`).
+                dpdk
+              ];
           };
         }
       );
